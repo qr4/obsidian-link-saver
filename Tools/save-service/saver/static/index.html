@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Obsidian Saver</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3l10 6v14l-10 6-10-6V9z' fill='%237f6df2'/%3E%3Cpath d='M16 9v14M11 18l5 5 5-5' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 3l10 6v14l-10 6-10-6V9z"/><path class="arrow" d="M16 9v14M11 18l5 5 5-5"/></svg>
+      <span>Obsidian Saver</span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="dashboard" role="tab">Dashboard</button>
+      <button class="tab" data-tab="library" role="tab">Library</button>
+    </nav>
+    <div class="status">
+      <span id="status-pill" class="pill">connecting…</span>
+      <button id="pause-btn" class="btn ghost small" hidden>Pause</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="dashboard" class="view">
+      <div class="stats" id="stats">
+        <div class="stat hero"><span class="label">Links saved</span><span class="value" id="stat-total">–</span><span class="sub" id="stat-last"></span></div>
+        <div class="stat"><span class="label">Today</span><span class="value" id="stat-today">–</span></div>
+        <div class="stat"><span class="label">Last 7 days</span><span class="value" id="stat-week">–</span></div>
+        <div class="stat"><span class="label">In queue</span><span class="value" id="stat-queue">–</span><span class="sub" id="stat-running"></span></div>
+        <div class="stat"><span class="label">Failed (24h)</span><span class="value" id="stat-failed">–</span></div>
+      </div>
+
+      <div class="grid">
+        <div class="col-main">
+          <section class="card" id="submit-card">
+            <h2>Add links</h2>
+            <form id="submit-form">
+              <textarea id="urls" rows="4" placeholder="Paste one or more links - pages, PDFs, YouTube videos or channels, git repos or GitHub users, media.ccc.de talks" spellcheck="false"></textarea>
+              <div class="options">
+                <label class="option">
+                  <input type="checkbox" id="opt-force">
+                  <span><strong>Re-save if already saved</strong>
+                    <small>Links already in the vault are normally skipped. This captures them again, overwrites the saved copy and replaces their entry in the Area note.</small></span>
+                </label>
+                <label class="option">
+                  <input type="checkbox" id="opt-thin">
+                  <span><strong>Keep low-content pages</strong>
+                    <small>The AI skips pages without real content of their own: tag or category archives, blog indexes, search results, login walls, error pages, bare images. Tick to save them anyway, e.g. a front page you want as an entry point.</small></span>
+                </label>
+                <label class="option">
+                  <input type="checkbox" id="opt-crawl">
+                  <span><strong>Crawl site</strong>
+                    <small>Also follow the links on the page and save every page found on the same site. Each page becomes its own job.</small></span>
+                </label>
+              </div>
+              <div class="crawl-options" id="crawl-options" hidden>
+                <label>Depth <input type="number" id="crawl-depth" min="0" max="10" value="3">
+                  <small>Link hops from the start page (1 = only pages it links to)</small></label>
+                <label>Max pages <input type="number" id="crawl-pages" min="1" max="5000" value="50">
+                  <small>Stop after this many pages</small></label>
+                <label>Scope
+                  <select id="crawl-scope"><option value="path">Below start page</option><option value="domain">Whole site</option></select>
+                  <small>Below start page: after the first hop, only URLs under the start page's folder</small></label>
+                <label class="check pdf-only"><input type="checkbox" id="crawl-pdf"> <span>PDFs only
+                  <small>Save only PDFs; HTML pages are just used to find them</small></span></label>
+              </div>
+              <div class="actions">
+                <button type="submit" class="btn primary" id="submit-btn">Save links</button>
+                <span class="hint">Ctrl+Enter</span>
+              </div>
+            </form>
+            <div id="dropzone" class="dropzone" tabindex="0">
+              <input type="file" id="file-input" multiple accept=".pdf,.html,.htm" hidden>
+              <strong>Drop PDFs or SingleFile pages here</strong>
+              <span>or <button type="button" class="linkish" id="browse-btn">browse</button></span>
+              <input type="url" id="file-source" placeholder="Source URL for a single PDF (optional)">
+            </div>
+            <ul id="submit-results" class="results"></ul>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>Queue</h2>
+              <span class="muted" id="queue-summary"></span>
+            </div>
+            <ul id="active-jobs" class="jobs"><li class="empty">Nothing queued.</li></ul>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <h2>Recent</h2>
+              <button class="btn ghost small" id="clear-btn">Clear finished</button>
+            </div>
+            <ul id="recent-jobs" class="jobs"><li class="empty">No finished jobs yet.</li></ul>
+          </section>
+        </div>
+
+        <aside class="col-side">
+          <section class="card" id="cookies-card">
+            <h2>YouTube cookies</h2>
+            <div id="cookie-status" class="cookie-status"></div>
+            <div class="cookie-actions">
+              <input type="file" id="cookie-file" accept=".txt,.json,text/plain,application/json" hidden>
+              <button type="button" class="btn ghost small" id="cookie-upload">Upload file</button>
+              <button type="button" class="btn ghost small" id="cookie-paste">Paste</button>
+              <button type="button" class="btn ghost small danger" id="cookie-remove" hidden>Remove</button>
+            </div>
+            <form id="cookie-form" hidden>
+              <textarea id="cookie-text" rows="5" spellcheck="false" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;…   (or Cookie-Editor JSON)"></textarea>
+              <div class="actions">
+                <button type="submit" class="btn primary small">Save cookies</button>
+                <button type="button" class="btn ghost small" id="cookie-cancel">Cancel</button>
+              </div>
+            </form>
+            <p id="cookie-message" class="cookie-message" hidden></p>
+            <details class="hint-text">
+              <summary>How to export</summary>
+              <p class="muted">Log in to YouTube in a private window, export with a cookies.txt extension (Netscape format) or Cookie-Editor (JSON), then close the window - YouTube rotates the cookies of sessions that stay open. Stored in <code>/config</code> (mode 600); values are never shown.</p>
+            </details>
+          </section>
+          <section class="card" id="storage-card">
+            <h2>Storage</h2>
+            <div id="storage-status" class="cookie-status"></div>
+            <div class="cookie-actions" id="storage-actions" hidden>
+              <button type="button" class="btn ghost small" id="repos-update" title="git pull every stored clone and refresh the README copies">Update repos</button>
+              <a class="btn ghost small" href="/blobs/" target="_blank" rel="noopener">Browse</a>
+            </div>
+            <details class="hint-text">
+              <summary>How this works</summary>
+              <p class="muted">Videos and full git clones are stored outside the vault and served by this service. The vault keeps what's small and searchable: each repo's README (whole gists), every transcript and subtitle file, and an <code>.offloaded</code> marker with the link. Notes link to a watch page (with subtitles, <code>?t=</code> for a start time) or the repo's file listing.</p>
+            </details>
+          </section>
+          <section class="card">
+            <h2>Saved per day</h2>
+            <div id="chart" class="chart" role="img" aria-label="Links saved per day, last 30 days"></div>
+          </section>
+          <section class="card">
+            <h2>By type</h2>
+            <ul id="kinds" class="bars"></ul>
+          </section>
+          <section class="card">
+            <h2>Top areas</h2>
+            <ul id="areas" class="bars"></ul>
+          </section>
+          <section class="card small-print">
+            <h2>Service</h2>
+            <dl id="service-info"></dl>
+            <p class="muted">Bookmarklet: drag <a id="bookmarklet" class="bookmarklet" href="#">Save to Obsidian</a> to your bookmarks bar.</p>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section id="library" class="view" hidden>
+      <section class="card">
+        <div class="library-bar">
+          <input type="search" id="lib-q" placeholder="Search URL, note, tags or summary…">
+          <select id="lib-kind">
+            <option value="">All types</option>
+            <option value="page">Pages</option>
+            <option value="git">Repos</option>
+            <option value="pdf">PDFs</option>
+            <option value="youtube">YouTube</option>
+            <option value="video">Talks</option>
+          </select>
+          <span class="muted" id="lib-count"></span>
+        </div>
+        <ul id="lib-list" class="entries"></ul>
+        <div class="center"><button class="btn ghost" id="lib-more" hidden>Load more</button></div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="token-dialog">
+    <form method="dialog" id="token-form">
+      <h2>API token</h2>
+      <p class="muted">This service requires a token (the API_TOKEN it was started with).</p>
+      <input type="password" id="token-input" autocomplete="current-password" required>
+      <div class="actions"><button class="btn primary" value="ok">Continue</button></div>
+    </form>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

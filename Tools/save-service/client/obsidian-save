@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""Send links to the Obsidian save service.
+
+  obsidian-save [URL ...] [--force] [--thin] [--crawl [--depth N] [--pages N] [--scope path|domain] [--pdf-only]]
+                [--file PATH ...] [--wait]
+
+With no URL: the clipboard if it holds a link, else a Walker prompt. Without
+a terminal (e.g. from a keybinding) progress and results go to notify-send.
+Invoked through a symlink whose name contains "crawl" (obsidian-crawl-site),
+it crawls by default:
+
+  ln -sf <vault>/Tools/save-service/client/obsidian-save ~/.local/bin/obsidian-save
+  ln -sf <vault>/Tools/save-service/client/obsidian-save ~/.local/bin/obsidian-crawl-site
+
+Configuration: SAVE_SERVICE_URL / SAVE_SERVICE_TOKEN from the environment
+or from Tools/save-service/client.env.
+"""
+import argparse
+import json
+import mimetypes
+import os
+import shutil
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+import uuid
+from pathlib import Path
+
+CLIENT_ENV = Path(__file__).resolve().parent.parent / "client.env"
+INTERACTIVE = sys.stdout.isatty()
+
+
+def config():
+    values = {}
+    if CLIENT_ENV.is_file():
+        for line in CLIENT_ENV.read_text().splitlines():
+            key, sep, value = line.partition("=")
+            if sep and not key.strip().startswith("#"):
+                values[key.strip()] = value.strip().strip('"').strip("'")
+    url = os.environ.get("SAVE_SERVICE_URL") or values.get("SAVE_SERVICE_URL") or "http://localhost:8765"
+    return url.rstrip("/"), os.environ.get("SAVE_SERVICE_TOKEN") or values.get("SAVE_SERVICE_TOKEN", "")
+
+
+BASE, TOKEN = config()
+
+
+def notify(title, body="", urgency="normal"):
+    print(f"{title}: {body}" if body else title, flush=True)
+    if not INTERACTIVE and os.environ.get("OBSIDIAN_SAVE_NO_NOTIFY") != "1" and shutil.which("notify-send"):
+        safe = body.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        subprocess.run(["notify-send", "-u", urgency, "-a", "obsidian-save", title, safe], check=False)
+
+
+def request(method, path, body=None, data=None, content_type="application/json"):
+    if body is not None:
+        data = json.dumps(body).encode()
+    req = urllib.request.Request(BASE + path, data=data, method=method)
+    if data is not None:
+        req.add_header("Content-Type", content_type)
+    if TOKEN:
+        req.add_header("Authorization", f"Bearer {TOKEN}")
+    with urllib.request.urlopen(req, timeout=60) as response:
+        return json.loads(response.read() or b"null")
+
+
+def upload(paths, source=None, force=False):
+    boundary = uuid.uuid4().hex
+    parts = []
+    for path in paths:
+        mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="files"; filename="{path.name}"\r\n'
+                     f"Content-Type: {mime}\r\n\r\n".encode() + path.read_bytes() + b"\r\n")
+    fields = {"force": "true" if force else "false"}
+    if source:
+        fields["source"] = source
+    for name, value in fields.items():
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
+    data = b"".join(parts) + f"--{boundary}--\r\n".encode()
+    return request("POST", "/api/upload", data=data, content_type=f"multipart/form-data; boundary={boundary}")
+
+
+def ask_for_url(prompt):
+    try:
+        clip = subprocess.run(["wl-paste", "--no-newline"], capture_output=True, text=True, timeout=3).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        clip = ""
+    if clip.startswith(("http://", "https://")) and " " not in clip:
+        return [clip]
+    if INTERACTIVE:
+        return [line.strip() for line in sys.stdin if line.strip()] if not sys.stdin.isatty() else [input(f"{prompt}: ").strip()]
+    if shutil.which("walker"):
+        answer = subprocess.run(["walker", "--dmenu", "--inputonly", "--placeholder", prompt],
+                                capture_output=True, text=True).stdout.strip()
+        return [answer] if answer else []
+    return []
+
+
+def wait_for(job_ids, timeout=6 * 3600):
+    pending, outcomes = set(job_ids), {}
+    deadline = time.time() + timeout
+    while pending and time.time() < deadline:
+        for job_id in list(pending):
+            job = request("GET", f"/api/jobs/{job_id}")
+            if job["status"] not in ("queued", "running"):
+                pending.discard(job_id)
+                outcomes[job_id] = job
+            elif INTERACTIVE:
+                label = " · ".join(filter(None, [job.get("stage"), job.get("progress_label")]))
+                print(f"\r#{job_id} {label[:100]:<100}", end="", flush=True)
+        time.sleep(2)
+    if INTERACTIVE:
+        print()
+    return outcomes
+
+
+def main():
+    crawl_default = "crawl" in Path(sys.argv[0]).name
+    parser = argparse.ArgumentParser(description="Send links or files to the Obsidian save service")
+    parser.add_argument("urls", nargs="*")
+    parser.add_argument("--force", action="store_true", help="re-save even if already saved")
+    parser.add_argument("--thin", action="store_true", help="keep low-content pages (tag archives, indexes, login walls) the LLM would skip")
+    parser.add_argument("--crawl", action="store_true", default=crawl_default, help="crawl the site from each URL")
+    parser.add_argument("--depth", type=int, default=3)
+    parser.add_argument("--pages", type=int, default=50)
+    parser.add_argument("--scope", choices=["path", "domain"], default="path")
+    parser.add_argument("--pdf-only", action="store_true")
+    parser.add_argument("--file", action="append", type=Path, default=[], help="upload a PDF or SingleFile .html")
+    parser.add_argument("--source", help="original URL of a single uploaded PDF")
+    parser.add_argument("--wait", action="store_true", default=not INTERACTIVE,
+                        help="wait for the jobs and report the outcome (default when run from a keybinding)")
+    args = parser.parse_args()
+
+    title = "Obsidian Crawl" if args.crawl else "Obsidian Save"
+    try:
+        if args.file:
+            results = upload(args.file, source=args.source, force=args.force)["results"]
+        else:
+            urls = args.urls or ask_for_url("Seed URL to crawl" if args.crawl else "URL to save to Obsidian")
+            if not urls:
+                return 0
+            body = {"urls": urls, "force": args.force, "allow_thin": args.thin}
+            if args.crawl:
+                body["crawl"] = {"max_depth": args.depth, "max_pages": args.pages,
+                                 "scope": args.scope, "pdf_only": args.pdf_only}
+            results = request("POST", "/api/links", body)["results"]
+    except urllib.error.HTTPError as e:
+        notify(f"{title} failed", f"{e.code}: {e.read().decode(errors='replace')[:300]}", "critical")
+        return 1
+    except (urllib.error.URLError, OSError) as e:
+        notify(f"{title} failed", f"save service unreachable at {BASE}: {e}", "critical")
+        return 1
+
+    queued, rejected = [], False
+    for r in results:
+        target = r.get("url") or r.get("file")
+        if r["status"] in ("queued", "already_queued"):
+            queued.append(r["job_id"])
+            notify(title, f"Queued #{r['job_id']}: {target}")
+        elif r["status"] == "already_saved":
+            notify(title, f"Already saved -> {r['note']}")
+        else:
+            rejected = True
+            notify(f"{title} failed", f"{target}: {r.get('error') or r['status']}", "critical")
+
+    if args.wait and queued:
+        failed = False
+        for job in wait_for(queued).values():
+            ok = job["status"] in ("done", "skipped")
+            failed |= not ok
+            notify(title if ok else f"{title} failed", job.get("result") or job.get("error") or job["status"],
+                   "normal" if ok else "critical")
+        return 1 if failed or rejected else 0
+    return 1 if rejected else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,14 @@
+tests/
+client/
+deploy/
+unraid/
+data/
+*.md
+client.env*
+docker-compose*.yml
+**/__pycache__/
+*.egg-info/
+.env
+.env.example
+.env.*.example
+livesync/

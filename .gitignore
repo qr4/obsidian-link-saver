@@ -1,0 +1,34 @@
+# This repository can be rooted at an Obsidian vault and then tracks only an
+# allowlist: the tooling and Claude skills, never notes, dumps or Obsidian
+# settings. Git does not descend into ignored folders, so a large Dumps/
+# costs nothing.
+/*
+!/.gitignore
+!/.github/
+!/LICENSE
+!/Tools/
+!/.claude/
+/.claude/*
+!/.claude/skills/
+
+# Local Claude Code permissions
+/Tools/.claude/
+
+# Secrets: SAVE_SERVICE_URL / SAVE_SERVICE_TOKEN for the client and skill,
+# and the compose stack's passwords and LiveSync passphrase
+/Tools/save-service/client.env
+/Tools/save-service/.env
+/Tools/save-service/docker-compose.override.yml
+
+# Container data when the stack runs from this folder with the default paths
+/Tools/save-service/data/
+
+# Python / tooling caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/

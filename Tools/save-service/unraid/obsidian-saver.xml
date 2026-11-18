@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<!-- Copy to /boot/config/plugins/dockerMan/templates-user/my-obsidian-saver.xml,
+     then Docker > Add Container > Template: obsidian-saver.
+     Build the image on the server first: docker build -t obsidian-saver:latest <path to Tools/save-service> -->
+<Container version="2">
+  <Name>obsidian-saver</Name>
+  <Repository>obsidian-saver:latest</Repository>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Overview>Saves links into an Obsidian vault: captures pages with SingleFile, clones repos, downloads and Whisper-transcribes videos, tags and summarizes with Ollama, and files each into Areas/. Web UI with queue, progress and stats.</Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8765]/</WebUI>
+  <ExtraParams>--runtime=nvidia</ExtraParams>
+  <Config Name="Web UI port" Target="8765" Default="8765" Mode="tcp" Description="Web UI and API" Type="Port" Display="always" Required="true" Mask="false">8765</Config>
+  <Config Name="Vault" Target="/vault" Default="/mnt/user/obsidian" Mode="rw" Description="The server's copy of your Obsidian vault, kept in sync by a sync tool of your choice" Type="Path" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Blob store" Target="/blobs" Default="/mnt/user/obsidian_blobs" Mode="rw" Description="Videos and full git clones: a separate share, NOT inside the vault (it would be synced back). Served under /blobs" Type="Path" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="BLOB_DIR" Target="BLOB_DIR" Default="/blobs" Mode="" Description="Leave at /blobs to store videos/clones offsite; empty keeps them in the vault" Type="Variable" Display="advanced" Required="false" Mask="false">/blobs</Config>
+  <Config Name="Public URL" Target="PUBLIC_URL" Default="" Mode="" Description="How your devices reach this service, e.g. https://saver.example.com - used in note links to videos and repos, keep it stable" Type="Variable" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Manage Waypoints" Target="MANAGE_WAYPOINTS" Default="true" Mode="" Description="Regenerate Waypoint folder notes here as the only writer - turn the Waypoint plugin off in Obsidian (prevents sync conflicts)" Type="Variable" Display="always" Required="false" Mask="false">true</Config>
+  <Config Name="AppData" Target="/config" Default="/mnt/user/appdata/obsidian-saver" Mode="rw" Description="Database, cookies.txt, Whisper models, uploads" Type="Path" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Ollama URL" Target="OLLAMA_URL" Default="" Mode="" Description="Ollama server used for tagging and summaries, e.g. http://192.168.1.10:11434" Type="Variable" Display="always" Required="true" Mask="false"></Config>
+  <Config Name="Ollama model" Target="OLLAMA_MODEL" Default="qwen3.8:27b" Mode="" Description="" Type="Variable" Display="always" Required="true" Mask="false">qwen3.8:27b</Config>
+  <Config Name="Whisper model" Target="WHISPER_MODEL" Default="large-v3" Mode="" Description="faster-whisper model (large-v3, large-v3-turbo, medium, small...)" Type="Variable" Display="always" Required="false" Mask="false">large-v3</Config>
+  <Config Name="Workers" Target="WORKERS" Default="2" Mode="" Description="Jobs processed in parallel (transcription always runs one at a time)" Type="Variable" Display="always" Required="false" Mask="false">2</Config>
+  <Config Name="API token" Target="API_TOKEN" Default="" Mode="" Description="If set, the UI and API require it" Type="Variable" Display="always" Required="false" Mask="true"></Config>
+  <Config Name="Timezone" Target="TZ" Default="Etc/UTC" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">Etc/UTC</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="" Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="Update yt-dlp on start" Target="YTDLP_AUTO_UPDATE" Default="true" Mode="" Description="yt-dlp breaks often against YouTube; restart the container to update it" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="NVIDIA_VISIBLE_DEVICES" Target="NVIDIA_VISIBLE_DEVICES" Default="all" Mode="" Description="GPU UUID or 'all'" Type="Variable" Display="advanced" Required="false" Mask="false">all</Config>
+</Container>

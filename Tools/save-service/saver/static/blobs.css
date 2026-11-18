@@ -1,0 +1,25 @@
+/* Blob store pages (listing, watch); builds on style.css */
+.topbar .brand { color: var(--text); text-decoration: none; white-space: nowrap; flex: none; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-family: var(--mono); font-size: 12.5px; min-width: 0; }
+.crumbs a { color: var(--muted); }
+.crumbs a:last-child { color: var(--text); font-weight: 600; }
+.crumbs .sep { color: var(--border); }
+.blob-main { display: flex; flex-direction: column; gap: 20px; }
+.blob-main h1 { font-size: 18px; margin: 0 0 14px; word-break: break-word; }
+.listing { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.listing th { text-align: left; color: var(--muted); font-size: 12px; font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.listing td { padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.listing tr:last-child td { border-bottom: 0; }
+.listing td:first-child { word-break: break-all; }
+.listing .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--muted); }
+.listing .muted { white-space: nowrap; }
+.listing a.dir { font-weight: 600; }
+.listing .watch { white-space: nowrap; font-weight: 600; }
+.readme { margin: 0; white-space: pre-wrap; word-break: break-word; font: 12.5px/1.6 var(--mono); max-height: 70vh; overflow: auto; }
+.watch-card video { width: 100%; max-height: 75vh; background: #000; border-radius: 8px; }
+.watch-links { margin: 12px 0 4px; }
+.small { font-size: 12px; }
+.small code { font-family: var(--mono); }
+@media (max-width: 600px) {
+  .listing th:nth-child(3), .listing td:nth-child(3) { display: none; }
+}

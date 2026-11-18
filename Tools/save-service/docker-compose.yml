@@ -1,0 +1,167 @@
+# The save service plus Obsidian Self-hosted LiveSync (CouchDB, and the
+# bridge that syncs the server's copy of the vault) in one stack.
+#
+#   cp .env.example .env        # fill in every <placeholder>
+#   docker compose up -d --build
+#
+# Every host-specific value comes from .env; nothing here needs editing.
+# First-time LiveSync steps: README, "Deploying".
+#
+# How the pieces connect: the save service writes into the vault copy on the
+# server. The bridge keeps that copy in sync with CouchDB, and the LiveSync
+# plugin on every device syncs with CouchDB. Without the bridge, nothing the
+# service writes would reach your devices.
+name: obsidian
+
+services:
+  saver:
+    # STACK_DIR: only needed when Compose runs this file from another folder
+    # (e.g. a stack manager's project directory); it points at this folder.
+    build: ${STACK_DIR:-.}
+    image: obsidian-saver:latest
+    container_name: obsidian-saver
+    restart: unless-stopped
+    # Your reverse proxy reaches the service as obsidian-saver:8765 over the
+    # proxy network; the port is also published for direct LAN access.
+    networks: [default, proxy]
+    ports:
+      - "${SAVER_PORT:-8765}:8765"
+    # Lets OLLAMA_URL point at an Ollama running on the Docker host:
+    # http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      TZ: ${TZ:-Etc/UTC}
+      OLLAMA_URL: ${OLLAMA_URL:?set OLLAMA_URL in .env}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.8:27b}
+      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
+      WORKERS: ${WORKERS:-2}
+      VAULT_NAME: ${VAULT_NAME:-obsidian}
+      # Videos and full git clones live in the blob store; notes link to them
+      # through PUBLIC_URL, so keep it stable.
+      BLOB_DIR: /blobs
+      PUBLIC_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env}
+      # The only writer of Waypoint folder notes (plugin off in Obsidian)
+      MANAGE_WAYPOINTS: "true"
+      API_TOKEN: ${API_TOKEN:-}
+      YTDLP_AUTO_UPDATE: "true"
+    volumes:
+      - ${DATA_DIR:-./data}/saver:/config
+      - ${VAULT_DIR:?set VAULT_DIR in .env}:/vault
+      - ${BLOBS_DIR:?set BLOBS_DIR in .env}:/blobs
+    # NVIDIA GPU for Whisper. On a machine without one (or without the NVIDIA
+    # Container Toolkit), delete this block: transcription then runs on the
+    # CPU, much slower; consider WHISPER_MODEL=small or medium.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  couchdb:
+    image: couchdb:3.5.2.1
+    container_name: obsidian-couchdb
+    restart: unless-stopped
+    # Your reverse proxy serves LIVESYNC_PUBLIC_URL from obsidian-couchdb:5984
+    # (the Obsidian mobile app requires HTTPS). The bridge and init reach it
+    # on `default`. No host port: it would expose CouchDB, admin password
+    # included, over plain HTTP.
+    networks: [default, proxy]
+    environment:
+      COUCHDB_USER: ${COUCHDB_USER:?set COUCHDB_USER in .env}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD:?set COUCHDB_PASSWORD in .env}
+    volumes:
+      - ${DATA_DIR:-./data}/couchdb/data:/opt/couchdb/data
+      - ${DATA_DIR:-./data}/couchdb/etc:/opt/couchdb/etc/local.d
+
+  # One-shot, on every `up`. Runs LiveSync's own provisioning: single node,
+  # authentication, CORS for Obsidian, request and document size limits (the
+  # settings guides make you click through in CouchDB's admin page), plus the
+  # database. Safe to rerun; it retries until CouchDB answers. It also hands
+  # the bridge's data folders to PUID:PGID.
+  livesync-init:
+    image: denoland/deno:debian-2.9.7
+    restart: "no"
+    depends_on:
+      - couchdb
+    environment:
+      hostname: http://couchdb:5984
+      username: ${COUCHDB_USER}
+      password: ${COUCHDB_PASSWORD}
+      database: ${LIVESYNC_DB:-obsidian}
+      retry_count: "30"
+      DENO_DIR: /deno-cache
+    volumes:
+      - ${DATA_DIR:-./data}/livesync/deno-cache:/deno-cache
+      - ${DATA_DIR:-./data}/livesync/bridge:/bridge/dat
+      - ${DATA_DIR:-./data}/livesync/state:/bridge/state
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        chown ${PUID:-1000}:${PGID:-1000} /bridge/dat /bridge/state &&
+        exec deno run --minimum-dependency-age=0 --allow-env --allow-net
+        https://raw.githubusercontent.com/vrtmrz/obsidian-livesync/003173ee0e8cebdc1cef5e6876a40b9452eb9f48/utils/couchdb/provision.ts
+
+  livesync-bridge:
+    build:
+      context: ${STACK_DIR:-.}/livesync
+      dockerfile: bridge.Dockerfile
+      args:
+        PUID: ${PUID:-1000}
+        PGID: ${PGID:-1000}
+    image: obsidian-livesync-bridge:latest
+    container_name: obsidian-livesync-bridge
+    restart: unless-stopped
+    init: true
+    depends_on:
+      livesync-init:
+        condition: service_completed_successfully
+    environment:
+      COUCHDB_URL: http://couchdb:5984
+      COUCHDB_USER: ${COUCHDB_USER}
+      COUCHDB_PASSWORD: ${COUCHDB_PASSWORD}
+      LIVESYNC_DB: ${LIVESYNC_DB:-obsidian}
+      LIVESYNC_PASSPHRASE: ${LIVESYNC_PASSPHRASE:?set LIVESYNC_PASSPHRASE in .env}
+      LIVESYNC_ID_KEY: ${LIVESYNC_ID_KEY:?set LIVESYNC_ID_KEY in .env}
+      BRIDGE_IGNORE: ${BRIDGE_IGNORE:-}
+      BRIDGE_RESCAN_HOURS: ${BRIDGE_RESCAN_HOURS:-1}
+    volumes:
+      - ${VAULT_DIR}:/vault
+      # config.json, written at every start (it holds the credentials)
+      - ${DATA_DIR:-./data}/livesync/bridge:/app/dat
+      # scan state and resume positions: keep them across recreations
+      - ${DATA_DIR:-./data}/livesync/state:/deno-dir/location_data
+
+  # Not started by `up`. Prints the Setup URI for the first Obsidian device:
+  #   docker compose run --rm livesync-setup-uri
+  livesync-setup-uri:
+    image: denoland/deno:debian-2.9.7
+    profiles: [setup]
+    environment:
+      LIVESYNC_HOST: ${LIVESYNC_PUBLIC_URL:?set LIVESYNC_PUBLIC_URL in .env}
+      LIVESYNC_DB: ${LIVESYNC_DB:-obsidian}
+      LIVESYNC_USER: ${COUCHDB_USER}
+      LIVESYNC_PASS: ${COUCHDB_PASSWORD}
+      LIVESYNC_PASSPHRASE: ${LIVESYNC_PASSPHRASE}
+      # The bridge needs the same ID key, so the URI is made with it
+      id_recovery_code: ${LIVESYNC_ID_KEY}
+      DENO_DIR: /deno-cache
+    volumes:
+      - ${DATA_DIR:-./data}/livesync/deno-cache:/deno-cache
+    entrypoint: ["deno"]
+    command:
+      - run
+      - --minimum-dependency-age=0
+      - --allow-env
+      - https://raw.githubusercontent.com/vrtmrz/obsidian-livesync/003173ee0e8cebdc1cef5e6876a40b9452eb9f48/utils/setup/generate_setup_uri.ts
+
+networks:
+  # Your reverse proxy's Docker network, created outside this stack. If your
+  # proxy has none yet: docker network create proxy
+  proxy:
+    name: ${PROXY_NETWORK:-proxy}
+    external: true
