@@ -16,7 +16,7 @@ from . import __version__, blobs, cookies
 from .waypoints import keeper as waypoint_keeper
 from .blobserve import router as blob_router
 from .config import settings
-from .db import ACTIVE_STATUSES, FINISHED_STATUSES, get_db
+from .db import ACTIVE_STATUSES, FINISHED_STATUSES, get_db, now_iso
 from .inbox import InboxWatcher
 from .jobctx import log
 from .jobs import manager
@@ -222,6 +222,9 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
         active_ids = {j["id"] for j in active}
         return {
             "version": __version__,
+            # Timestamps are naive server-local time; the UI measures "ago"
+            # against this instead of the browser's clock and time zone.
+            "server_time": now_iso(),
             "paused": manager.paused,
             "workers": settings.workers,
             "stats": db.stats(),

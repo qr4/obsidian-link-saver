@@ -5,6 +5,7 @@ Dumps/ plus a tagged, summarized bullet in an Areas/ leaf note.
   - progress goes to the job (stage()/progress()/log())
   - errors raise SaveError, which fails the job, not the service
 """
+import re
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -561,12 +562,23 @@ class Saver:
     # ------------------------------------------------------------------
     # dispatch
     # ------------------------------------------------------------------
+    # Text any forge's repo page carries (its software's name, a clone URL),
+    # and almost no ordinary article does. Pages without it skip the LLM.
+    FORGE_MARKERS = re.compile(
+        r"gitea|forgejo|gitlab|gogs|sourcehut|sr\.ht|cgit|gitweb|onedev|git clone|\.git\b", re.IGNORECASE)
+
     def detect_git_repo(self, url: str, html: str):
         """Heuristic fallback for repos on forges outside GIT_HOSTS (a
         self-hosted Gitea/Forgejo/GitLab) whose URL doesn't end in .git.
         The host is the page's own netloc, never something the LLM invents
         (it once fabricated a github.com URL for a Gitea repo), and the
-        reconstructed URL must resolve before it is trusted."""
+        reconstructed URL must resolve before it is trusted.
+
+        Only pages showing a forge marker are put to the LLM: the question
+        costs a full model call (and, on a cold Ollama, the model load)
+        for every saved article otherwise."""
+        if not self.FORGE_MARKERS.search(html):
+            return None, None, None
         soup = BeautifulSoup(html, "html.parser")
         title = soup.title.string.strip() if soup.title and soup.title.string else ""
         text = soup.get_text(separator="\n", strip=True)[:2000]

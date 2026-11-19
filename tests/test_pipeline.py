@@ -185,3 +185,19 @@ def test_upload_moves_across_filesystems(env, capture, monkeypatch):
     upload.write_text(PAGE, encoding="utf-8")
     assert Saver().import_captured_file(upload) == "skipped_dedupe"
     assert not upload.exists() and not (settings.upload_dir / "_duplicate").exists()
+
+
+def test_repo_check_skips_the_llm_for_ordinary_pages(env, capture, monkeypatch):
+    asked = []
+    monkeypatch.setattr(saver_mod.llm, "detect_git_repo_prompt", lambda *a: asked.append(a) or {})
+    assert Saver().detect_git_repo("https://blog.example.com/post", PAGE) == (None, None, None)
+    assert asked == []
+
+
+def test_repo_check_asks_the_llm_on_forge_pages(env, monkeypatch):
+    asked = []
+    monkeypatch.setattr(saver_mod.llm, "detect_git_repo_prompt", lambda *a: asked.append(a) or {"is_repo": False})
+    page = "<html><head><title>tool</title></head><body>Powered by Forgejo. " \
+           "git clone https://code.example.org/me/tool.git</body></html>"
+    assert Saver().detect_git_repo("https://code.example.org/me/tool", page) == (None, None, None)
+    assert len(asked) == 1

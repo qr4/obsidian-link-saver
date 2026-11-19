@@ -83,6 +83,8 @@ Notes:
   `Environment="OLLAMA_HOST=0.0.0.0"` under `[Service]`, restart it; mind
   your firewall), or point `OLLAMA_URL` at another Ollama. Docker Desktop
   (macOS, Windows) reaches the host's Ollama as is.
+- Timestamps in notes and job logs use the container's time zone, UTC
+  unless you add your own in front of the command, e.g. `TZ=Europe/Berlin`.
 - Transcription runs on the CPU with Whisper `small`; long videos take a
   while.
 - Everything stays in `playground/`, which git ignores. Stop with Ctrl-C;

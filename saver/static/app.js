@@ -65,9 +65,16 @@ function askToken() {
 }
 
 /* ------------------------------------------------------------ formatting */
+// The server's timestamps are naive local time in *its* time zone, which the
+// browser parses as its own. Measuring them against the server's clock (sent
+// with every poll, parsed the same way) cancels the zone and any clock drift.
+let serverOffset = 0;
+const hasZone = (iso) => /(Z|[+-]\d\d:?\d\d)$/i.test(iso);
+const nowFor = (iso) => Date.now() + (hasZone(iso) ? 0 : serverOffset);
+
 function ago(iso) {
   if (!iso) return "";
-  const seconds = (Date.now() - new Date(iso).getTime()) / 1000;
+  const seconds = (nowFor(iso) - new Date(iso).getTime()) / 1000;
   if (seconds < 45) return "just now";
   if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
@@ -77,7 +84,8 @@ function ago(iso) {
 
 function duration(startIso, endIso) {
   if (!startIso) return "";
-  const seconds = Math.max(0, ((endIso ? new Date(endIso) : new Date()) - new Date(startIso)) / 1000);
+  const end = endIso ? new Date(endIso).getTime() : nowFor(startIso);
+  const seconds = Math.max(0, (end - new Date(startIso).getTime()) / 1000);
   if (seconds < 60) return `${Math.round(seconds)}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
   return `${Math.floor(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
@@ -181,6 +189,7 @@ function renderStorage(st) {
   const box = $("#storage-status");
   const line = (cls, text) => el("div", { class: `line ${cls}` }, el("span", { class: "dot" }), el("span", {}, text));
   $("#storage-actions").hidden = !st?.enabled;
+  $("#storage-link").hidden = !st?.enabled;
   if (!st) return;
   if (st.problem) {
     box.replaceChildren(line("bad", st.problem));
@@ -344,7 +353,12 @@ function renderJobs(list, jobs, emptyText) {
     updateJob(li, job);
     return li;
   });
-  list.replaceChildren(...nodes);
+  // Re-inserting a row detaches it, which resets the scroll position of an
+  // open log inside it; so only move rows that aren't in place already.
+  nodes.forEach((node, i) => {
+    if (list.children[i] !== node) list.insertBefore(node, list.children[i] || null);
+  });
+  while (list.children.length > nodes.length) list.lastElementChild.remove();
 }
 
 function jobActionFor(job, active) {
@@ -469,6 +483,7 @@ async function poll() {
   let delay = 5000;
   try {
     const state = await api("/api/state");
+    if (state.server_time) serverOffset = new Date(state.server_time).getTime() - Date.now();
     config = state.config;
     renderStats(state.stats);
     renderStatus(state);
