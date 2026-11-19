@@ -194,10 +194,12 @@ def plan(vault) -> list:
 
 def refresh(vault, write: bool = True) -> list:
     """Regenerate every stale index. Returns the folder notes changed."""
+    from .util import write_text_atomic  # here, not at the top: this module stays settings-free
+
     changes = plan(vault)
     if write:
         for note, text in changes:
-            note.write_text(text, encoding="utf-8")
+            write_text_atomic(note, text)
     return [note for note, _ in changes]
 
 

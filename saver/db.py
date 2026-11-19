@@ -196,7 +196,8 @@ class Database:
         with self.tx() as c:
             row = c.execute("SELECT * FROM entries WHERE key = ?", (key,)).fetchone()
             row = dict(row) if row else None
-            if row and not force:
+            if row and (not force or row["status"] == "in_progress"):
+                # force redoes a finished save, never one still running
                 return ("in_progress" if row["status"] == "in_progress" else "exists"), row
             now = now_iso()
             if row:
@@ -246,10 +247,6 @@ class Database:
         assignments = ", ".join(f"{k} = ?" for k in values)
         with self.tx() as c:
             c.execute(f"UPDATE entries SET {assignments} WHERE key = ?", (*values.values(), key))
-
-    def delete_entry(self, key) -> bool:
-        with self.tx() as c:
-            return c.execute("DELETE FROM entries WHERE key = ?", (key,)).rowcount > 0
 
     def clear_stale_claims(self) -> int:
         """At startup nothing can be mid-save, so every in_progress claim

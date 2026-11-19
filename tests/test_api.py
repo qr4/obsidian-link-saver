@@ -157,3 +157,15 @@ def test_crawl_with_running_children_stays_active(client, env):
     assert crawl["status"] == "running" and crawl["progress"] == 0.5 and crawl["progress_label"] == "1/2 pages done"
     assert all(j["id"] != crawl_id for j in state["recent"])
     client.post("/api/resume")
+
+
+def test_cross_site_requests_are_refused(client):
+    # a form post from another site carries that site's Origin
+    assert client.post("/api/pause", headers={"Origin": "https://evil.example"}).status_code == 403
+    assert client.get("/api/state").json()["paused"] is False
+    # the web UI itself (same origin) and scripts (no Origin) still work
+    assert client.post("/api/pause", headers={"Origin": "http://testserver"}).status_code == 200
+    assert client.post("/api/resume").status_code == 200
+    # behind a proxy that rewrites Host, the forwarded host counts as our own
+    assert client.post("/api/resume", headers={"Origin": "https://saver.example.com",
+                                               "X-Forwarded-Host": "saver.example.com"}).status_code == 200

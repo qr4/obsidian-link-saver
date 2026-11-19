@@ -201,3 +201,13 @@ def test_repo_check_asks_the_llm_on_forge_pages(env, monkeypatch):
            "git clone https://code.example.org/me/tool.git</body></html>"
     assert Saver().detect_git_repo("https://code.example.org/me/tool", page) == (None, None, None)
     assert len(asked) == 1
+
+
+def test_failure_after_capture_leaves_no_temp_file(env, capture, monkeypatch):
+    def timeout(_text):
+        raise TimeoutError("Ollama timed out")
+    monkeypatch.setattr(saver_mod.llm, "extract_title", timeout)
+    with pytest.raises(TimeoutError):
+        Saver().save("https://blog.example.com/posts/slow")
+    assert capture  # the page was captured before the failure
+    assert not list((env["vault"] / "Dumps" / "single_page").glob("_capture-*"))

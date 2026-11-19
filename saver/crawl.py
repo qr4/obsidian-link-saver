@@ -17,6 +17,7 @@ from .config import settings
 from .db import get_db
 from .jobctx import check_cancelled, current, log, progress, result, stage
 from .urls import dedupe_key
+from .util import write_text_atomic
 from .vaultlock import vault_lock
 
 FETCH_TIMEOUT = 30
@@ -125,11 +126,11 @@ def relocate_into_domain_folder(url: str, domain: str):
                 text = area_path.read_text(encoding="utf-8")
                 if area_entry in text:
                     new_area_entry = area_entry.replace(old_link, new_link)
-                    area_path.write_text(text.replace(area_entry, new_area_entry, 1), encoding="utf-8")
+                    write_text_atomic(area_path, text.replace(area_entry, new_area_entry, 1))
                 elif old_link in text:
                     # the stored entry drifted from the note - patch the link alone
                     new_area_entry = area_entry.replace(old_link, new_link)
-                    area_path.write_text(text.replace(old_link, new_link), encoding="utf-8")
+                    write_text_atomic(area_path, text.replace(old_link, new_link))
 
         db.update_entry_fields(key, filename=new_filename, area_entry=new_area_entry)
     log(f"Relocated -> Dumps/single_page/{new_filename}")

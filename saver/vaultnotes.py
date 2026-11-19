@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .config import settings
 from .jobctx import log
-from .util import create_path
+from .util import create_path, write_text_atomic
 from .vaultlock import vault_lock
 
 # The Obsidian Waypoint plugin watches every vault file - not just markdown -
@@ -50,7 +50,7 @@ def ensure_graph_color_group(area_folder: str):
             return
         color_groups.append({"query": query, "color": {"a": 1, "rgb": _generate_group_color(len(color_groups))}})
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+        write_text_atomic(path, json.dumps(config, indent=2))
 
 
 def ensure_waypoints(area_path: str):
@@ -196,7 +196,7 @@ def replace_area_entry(area: str, tags, summary: str, source_line: str,
             if old_path.exists():
                 old_text = old_path.read_text(encoding="utf-8")
                 if old_content in old_text:
-                    old_path.write_text(old_text.replace(old_content, "", 1), encoding="utf-8")
+                    write_text_atomic(old_path, old_text.replace(old_content, "", 1))
                     removed = True
         area_path.parent.mkdir(parents=True, exist_ok=True)
         with open(area_path, "a", encoding="utf-8") as f:

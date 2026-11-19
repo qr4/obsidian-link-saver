@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
@@ -65,6 +66,16 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
     app.include_router(blob_router)
 
     def require_token(request: Request):
+        # A browser on another site can still send form posts and uploads
+        # here (no CORS preflight for those), riding on the missing or
+        # bearer-less auth. Browsers always name the page's origin, so refuse
+        # any origin that isn't this service; scripts send no Origin at all.
+        origin = request.headers.get("origin")
+        if origin is not None:
+            own = {request.headers.get("host"), request.headers.get("x-forwarded-host"),
+                   urlparse(settings.public_url).netloc}
+            if urlparse(origin).netloc not in own - {None, ""}:
+                raise HTTPException(status_code=403, detail="cross-site request refused")
         token = settings.api_token
         if not token:
             return

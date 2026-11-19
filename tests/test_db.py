@@ -135,3 +135,13 @@ def test_git_keys_are_canonicalized(tmp_path):
     # other hosts keep case-sensitive paths
     assert db.has_entry("url:example.com/Page")
     assert db.canonicalize_keys() == 0  # idempotent
+
+
+def test_forced_claim_waits_for_a_save_in_progress(tmp_path):
+    """Two re-saves of one link must not run at once: the second would append
+    a duplicate bullet next to the one the first just replaced."""
+    db = Database(tmp_path / "t.db")
+    db.complete_entry("url:a", url="https://a", note="Areas/x.md", area_note="x.md", area_entry="- old\n")
+    assert db.claim_entry("url:a", "https://a", force=True)[0] == "claimed"
+    state, row = db.claim_entry("url:a", "https://a", force=True)
+    assert state == "in_progress" and row["area_entry"] == "- old\n"

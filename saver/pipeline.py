@@ -128,43 +128,40 @@ class Saver:
         soup = BeautifulSoup(html, "html.parser")
         text = soup.get_text(separator="\n", strip=True)
 
-        # Validate content BEFORE writing anything; a content rejection also
-        # cleans up the temp capture so a dropped save leaves nothing behind.
+        # Until the capture has its final name, any failure (content rejected,
+        # the LLM timing out, a cancel) removes the temp capture, so a dropped
+        # save leaves nothing in the vault.
         try:
             tags, summary, area = self.analyze(text, allow_thin=allow_thin)
+
+            # <title> is often useless as a distinctive filename - some sites
+            # reuse one static <title> site-wide - so ask the model for the
+            # real title, falling back to the DOM title plus a URL slug.
+            stage("Naming the dump")
+            dom_title = soup.title.string.strip() if soup.title and soup.title.string else ""
+            title = llm.extract_title(text) or dom_title or url
+            if dom_title and title.strip().lower() == dom_title.strip().lower():
+                slug_title = derive_url_slug_title(url)
+                if slug_title and slug_title.lower() != title.strip().lower():
+                    title = f"{title} - {slug_title}"
+
+            page_dir.mkdir(parents=True, exist_ok=True)
+            if existing_filename and (page_dir / existing_filename).exists():
+                # force redo: overwrite the same file in place rather than
+                # minting a fresh timestamped name and orphaning the old capture.
+                dest = page_dir / existing_filename
+            else:
+                timestamp = now.strftime("%Y-%m-%d %H-%M-%S")
+                final_name = f"{sanitize_filename(title)[:150]} ({timestamp}).html"
+                dest = unique_destination(page_dir, final_name)
+            if temp_path:
+                move_file(temp_path, dest)
+            else:
+                dest.write_text(html, encoding="utf-8")
         except BaseException:
             if temp_path and not precaptured:
                 temp_path.unlink(missing_ok=True)
             raise
-
-        # <title> is often useless as a distinctive filename - some sites
-        # reuse one static <title> site-wide - so ask the model for the real
-        # title, falling back to the DOM title plus a URL slug.
-        stage("Naming the dump")
-        dom_title = soup.title.string.strip() if soup.title and soup.title.string else ""
-        title = llm.extract_title(text) or dom_title or url
-        if dom_title and title.strip().lower() == dom_title.strip().lower():
-            slug_title = derive_url_slug_title(url)
-            if slug_title and slug_title.lower() != title.strip().lower():
-                title = f"{title} - {slug_title}"
-
-        page_dir.mkdir(parents=True, exist_ok=True)
-        if existing_filename and (page_dir / existing_filename).exists():
-            # force redo: overwrite the same file in place rather than minting
-            # a fresh timestamped name and orphaning the old capture.
-            dest = page_dir / existing_filename
-            if temp_path:
-                move_file(temp_path, dest)
-            else:
-                dest.write_text(html, encoding="utf-8")
-        else:
-            timestamp = now.strftime("%Y-%m-%d %H-%M-%S")
-            final_name = f"{sanitize_filename(title)[:150]} ({timestamp}).html"
-            dest = unique_destination(page_dir, final_name)
-            if temp_path:
-                move_file(temp_path, dest)
-            else:
-                dest.write_text(html, encoding="utf-8")
         filename = dest.name
 
         source_line = f"[[Dumps/single_page/{filename}]]\n{url}"

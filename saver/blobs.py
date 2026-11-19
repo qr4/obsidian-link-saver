@@ -29,6 +29,7 @@ from urllib.parse import quote
 from . import proc
 from .config import settings
 from .jobctx import check_cancelled, log, progress, result, stage
+from .util import write_text_atomic
 from .vaultlock import vault_lock
 
 CATEGORIES = ("git", "youtube", "video")
@@ -521,7 +522,7 @@ def _rewrite_links(moved: set) -> int:
         new = LINK_RE.sub(repl, text)
         if new != text:
             changed += 1
-            note.write_text(new, encoding="utf-8")
+            write_text_atomic(note, new)
             log(f"  links rewritten: {note.relative_to(settings.vault_dir)}")
     return changed
 

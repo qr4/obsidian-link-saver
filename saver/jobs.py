@@ -69,7 +69,6 @@ class JobManager:
         self._stop = False
         self._paused = False
         self._cancel = set()
-        self._running = set()
 
     # ---- lifecycle -------------------------------------------------------
     def start(self, workers: int):
@@ -130,10 +129,6 @@ class JobManager:
         with self._cond:
             return job_id in self._cancel
 
-    def running_ids(self) -> set:
-        with self._cond:
-            return set(self._running)
-
     # ---- submission -------------------------------------------------------
     def enqueue(self, type_, url=None, options=None, parent_id=None) -> int:
         job_id = get_db().create_job(type_, url, options or {}, parent_id)
@@ -190,13 +185,10 @@ class JobManager:
                     if not self._stop:
                         self._cond.wait(timeout=2)
                 continue
-            with self._cond:
-                self._running.add(job["id"])
             try:
                 self._run(job)
             finally:
                 with self._cond:
-                    self._running.discard(job["id"])
                     self._cancel.discard(job["id"])
 
     def _run(self, job: dict):

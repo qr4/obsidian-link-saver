@@ -3,10 +3,31 @@ import errno
 import os
 import re
 import shutil
+import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
 from .config import settings
+
+
+def write_text_atomic(path, text: str):
+    """Replace a file's content in one step. A stop or a concurrent reader
+    mid-write sees the old file or the new one, never a cut-off note that
+    LiveSync would carry to every device. The temp file is a dot file, which
+    the bridge and the folder-index keeper ignore."""
+    path = Path(path)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        try:
+            os.chmod(tmp, path.stat().st_mode & 0o7777)
+        except FileNotFoundError:
+            os.chmod(tmp, 0o664)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def ensure_directories():

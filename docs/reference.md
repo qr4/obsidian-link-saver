@@ -233,6 +233,9 @@ it conflicts constantly.
 ## API
 
 All endpoints are under `/api` and return JSON. Full schema at `/docs`.
+Requests that a browser sends from another site (an `Origin` header naming
+a host other than this service's own) are refused, with or without
+`API_TOKEN`; scripts send no `Origin` and aren't affected.
 
 ```sh
 # queue links (also accepts "url": "...", and a whitespace-separated blob)

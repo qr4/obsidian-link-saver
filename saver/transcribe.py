@@ -157,13 +157,6 @@ def _reaper():
             _gpu.release()
 
 
-def unload():
-    global _model, _model_key
-    with _gpu, _state_lock:
-        _model, _model_key = None, None
-        gc.collect()
-
-
 def status() -> dict:
     return {
         "enabled": settings.whisper_enabled,

@@ -94,9 +94,10 @@ fi
 # and .env from the project folder by itself.
 cd "$project"
 docker compose config -q
-context="$(docker compose config | sed -n 's/^ *context: //p' | head -n 1)"
-if [ "$context" != "$here" ]; then
-    echo "The images would build from $context, not from this checkout ($here)." >&2
+# Services come out sorted by name, so livesync-bridge's context (<clone>/livesync)
+# is listed first: look for the clone among all of them.
+if ! docker compose config | sed -n 's/^ *context: //p' | grep -qxF "$here"; then
+    echo "The images wouldn't build from this clone ($here)." >&2
     echo "Set STACK_DIR=$here in $project/.env." >&2
     exit 1
 fi
