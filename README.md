@@ -18,7 +18,7 @@ everything the service writes reaches your desktop and phone within seconds.
 A [Claude Code](https://claude.com/claude-code) skill for auditing and
 restructuring the vault is included.
 
-![The dashboard after saving an essay, a GitHub repo, a YouTube video and a PDF](docs/screenshots/dashboard.png)
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png"><img alt="The dashboard after saving an essay, a GitHub repo, a YouTube video and a PDF" src="docs/screenshots/dashboard.png"></picture>
 
 > [!WARNING]
 > **This repository was implemented largely with AI.** Most of the code,
@@ -58,9 +58,9 @@ saving four links.
 
 | | |
 |---|---|
-| ![The Library tab listing the four saved links with their tags, summaries and notes](docs/screenshots/library.png) | ![A YouTube job's log: download, transcription, then tagging, summary and filing](docs/screenshots/job-log.png) |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/library-dark.png"><img alt="The Library tab listing the four saved links with their tags, summaries and notes" src="docs/screenshots/library.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/job-log-dark.png"><img alt="A YouTube job's log: download, transcription, then tagging, summary and filing" src="docs/screenshots/job-log.png"></picture> |
 | **Library:** everything saved, searchable, with links to the note and the stored files | **Job log:** each stage of a save; videos are filed by their transcript |
-| ![The blob store's file browser showing a cloned repository and its README](docs/screenshots/repo-browser.png) | ![The video player with Whisper subtitles](docs/screenshots/watch.jpg) |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/repo-browser-dark.png"><img alt="The blob store's file browser showing a cloned repository and its README" src="docs/screenshots/repo-browser.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/watch-dark.jpg"><img alt="The video player with Whisper subtitles" src="docs/screenshots/watch.jpg"></picture> |
 | **Stored repositories:** the full clone lives outside the vault, browsable | **Video player:** stored videos play in the browser with Whisper subtitles |
 
 ## Quick start (on your own machine)
