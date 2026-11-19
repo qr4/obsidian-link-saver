@@ -169,3 +169,12 @@ def test_cross_site_requests_are_refused(client):
     # behind a proxy that rewrites Host, the forwarded host counts as our own
     assert client.post("/api/resume", headers={"Origin": "https://saver.example.com",
                                                "X-Forwarded-Host": "saver.example.com"}).status_code == 200
+
+
+def test_ui_is_revalidated_after_updates(client):
+    assert client.get("/").headers["cache-control"] == "no-cache"
+    script = client.get("/static/app.js")
+    assert script.headers["cache-control"] == "no-cache"
+    # an unchanged script costs only a 304 on the next load
+    assert client.get("/static/app.js", headers={"If-None-Match": script.headers["etag"]}).status_code == 304
+    assert "cache-control" not in client.get("/api/health").headers

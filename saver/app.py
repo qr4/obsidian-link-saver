@@ -65,6 +65,16 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
     app.include_router(blob_router)
 
+    @app.middleware("http")
+    async def revalidate_ui(request: Request, call_next):
+        # Without this, browsers guess how long they may reuse the page and
+        # its scripts, and keep showing the old UI for a day after an update.
+        # no-cache still caches, but asks first; an unchanged file costs a 304.
+        response = await call_next(request)
+        if request.url.path == "/" or request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"
+        return response
+
     def require_token(request: Request):
         # A browser on another site can still send form posts and uploads
         # here (no CORS preflight for those), riding on the missing or
