@@ -93,7 +93,9 @@ def svg(theme):
     text(W / 2, 34, "How obsidian-link-saver fits together", size=18, weight="700")
 
     # --- devices ---
-    box(40, 105, 180, 90, "Obsidian", ("desktop & phone", "LiveSync plugin"), accent=c["sync"], fill=c["sync_bg"])
+    for y, device in ((100, "desktop"), (160, "laptop"), (220, "phone")):
+        box(40, y, 180, 50, "Obsidian", (device,), accent=c["sync"], fill=c["sync_bg"])
+    text(130, 292, "each with the LiveSync plugin", size=11, color=c["sync"], weight="600")
     box(40, 330, 180, 70, "Browser", ("web UI · bookmarklet",), accent=c["save"], fill=c["save_bg"])
     box(40, 420, 180, 60, "obsidian-save", ("CLI & keybinding",))
     box(40, 500, 180, 70, "Claude Code", ("vault-maintenance skill",), dashed=True)
@@ -118,7 +120,10 @@ def svg(theme):
     box(930, 545, 170, 70, "The web", ("pages · repos · videos",), accent=c["ext"], fill=c["ext_bg"])
 
     # --- edges: sync ---
-    edge([(220, 150), (274, 150)], "sync", both=True)
+    for y in (125, 185, 245):  # shared line from every device to the sync endpoint
+        edge([(250, y), (220, y)], "sync")
+    add(f'<path d="M250,125 L250,245" stroke="{c["sync"]}" stroke-width="2" fill="none"/>')
+    edge([(250, 150), (274, 150)], "sync")
     edge([(386, 150), (440, 150)], "sync", both=True)
     edge([(600, 150), (700, 150)], "sync", both=True)
     edge([(785, 195), (785, 310)], "sync", both=True, label="keeps in sync", label_at=(795, 257), label_anchor="start")
