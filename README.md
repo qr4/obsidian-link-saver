@@ -29,6 +29,16 @@ restructuring the vault is included.
 > your vault and syncs the result to all your devices, so **back up your
 > vault before you start**, and read what you run.
 
+> [!CAUTION]
+> **Authentication is minimal, and off by default.** The only protection
+> is one shared secret, `API_TOKEN`. While it's empty (the default),
+> anyone who can reach the service can use the whole API: save links,
+> upload files into your vault, change settings. Even with a token set, the
+> blob store isn't protected: `/blobs`, `/watch` and `/subs` (your stored
+> videos, cloned repos and subtitles) stay open, because notes link to
+> them directly. Keep the service on your LAN or behind a VPN, and set
+> `API_TOKEN` (see [Configure](#5-configure)).
+
 ## How it fits together
 
 <picture>
@@ -218,6 +228,7 @@ every placeholder:
 | `LIVESYNC_PUBLIC_URL` | `https://sync.example.com` |
 | `OLLAMA_URL`, `OLLAMA_MODEL` | Your Ollama (`http://host.docker.internal:11434` if it runs on the Docker host) and model |
 | `TZ` | Your time zone, for timestamps in notes |
+| `API_TOKEN` | Optional, but recommended: a secret (`openssl rand -hex 24`). The web UI asks for it once; the client and the skill read it from `SAVE_SERVICE_TOKEN`. Empty, the API is open |
 
 No NVIDIA GPU? Delete the `deploy:` block under `saver` in
 `docker-compose.yml`, and consider `WHISPER_MODEL=small` or `medium`.
