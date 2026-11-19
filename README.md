@@ -29,13 +29,10 @@ restructuring the vault is included.
 
 ## How it fits together
 
-```
- Obsidian on your devices ──LiveSync plugin──▶ CouchDB ◀──▶ livesync-bridge ◀──▶ vault copy on the server
-                                                                                    ▲
- web UI · bookmarklet · obsidian-save · API ──▶ saver ──────────────────────────────┘
-                                                  ├──▶ Ollama (tags, summaries, filing)
-                                                  └──▶ blob store (videos, git clones), served at /blobs and /watch
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg">
+  <img alt="Obsidian on your devices syncs through the LiveSync plugin with CouchDB behind a reverse proxy; livesync-bridge keeps CouchDB and the server's vault copy in sync; the saver service, reached by the browser, the obsidian-save client and the Claude Code skill, writes notes into the vault copy, stores videos and clones in the blob store, fetches from the web and asks Ollama to tag and file each link." src="docs/architecture-light.svg">
+</picture>
 
 The service (`saver`) writes into a copy of the vault on the server. The
 bridge keeps that copy and CouchDB in sync, and the LiveSync plugin syncs
@@ -52,9 +49,49 @@ The vault layout it uses (created when missing):
   Dumps/singlefile_inbox/      drop SingleFile pages or PDFs here to import them
 ```
 
+## Quick start (on your own machine)
+
+To try it out before setting up a server, run just the service locally:
+no proxy, no LiveSync, no GPU. It writes into a throwaway vault that you
+open directly in Obsidian. You need Docker and
+[Ollama](https://ollama.com/download) with a model pulled
+(`ollama pull <model>`).
+
+```sh
+git clone https://github.com/<owner>/obsidian-link-saver.git
+cd obsidian-link-saver
+mkdir -p playground/vault playground/blobs
+PUID=$(id -u) PGID=$(id -g) OLLAMA_MODEL=<model> \
+  docker compose -f docker-compose.quickstart.yml up --build
+```
+
+The first build takes several minutes (Chromium, Node, faster-whisper).
+Then:
+
+1. Open <http://localhost:8765>, paste a link (an article, a GitHub repo, a
+   short YouTube video) and watch the job's progress and log.
+2. In Obsidian, *Open folder as vault* → `playground/vault`. The entry
+   appears as a bullet in a note under `Areas/`, with the capture under
+   `Dumps/`. Videos and full clones go to `playground/blobs` and open from
+   the note's links in your browser.
+
+Notes:
+
+- **Ollama on Linux** listens only on `127.0.0.1` by default, which
+  containers can't reach. Either run it with `OLLAMA_HOST=0.0.0.0` (for the
+  systemd service: `sudo systemctl edit ollama`, add
+  `Environment="OLLAMA_HOST=0.0.0.0"` under `[Service]`, restart it; mind
+  your firewall), or point `OLLAMA_URL` at another Ollama. Docker Desktop
+  (macOS, Windows) reaches the host's Ollama as is.
+- Transcription runs on the CPU with Whisper `small`; long videos take a
+  while.
+- Everything stays in `playground/`, which git ignores. Stop with Ctrl-C;
+  `docker compose -f docker-compose.quickstart.yml down` removes the
+  container, and deleting `playground/` removes the rest.
+
 ## Bootstrap
 
-This walks through a fresh install. Commands use example paths under
+This walks through a fresh install on a server. Commands use example paths under
 `/srv/obsidian`; put the folders wherever suits your server. On Unraid, see
 [Running on Unraid](#running-on-unraid) as you go.
 
@@ -339,6 +376,7 @@ provides the GPU, and shares are owned by `nobody:users` (`PUID=99`,
 | Path | |
 |---|---|
 | `docker-compose.yml`, `.env.example`, `.env.unraid.example` | The stack and its configuration |
+| `docker-compose.quickstart.yml` | The service alone, for trying it on your own machine |
 | `Dockerfile`, `docker/`, `saver/`, `pyproject.toml` | The save service (FastAPI, SQLite, workers, web UI) |
 | `livesync/` | The livesync-bridge image and its startup script |
 | `client/` | `obsidian-save`, the command-line and keybinding client |
@@ -346,6 +384,7 @@ provides the GPU, and shares are owned by `nobody:users` (`PUID=99`,
 | `skills/vault-maintenance/` | The Claude Code skill |
 | `tests/` | `pytest` suite for the service |
 | `docs/reference.md` | Blob store, folder indexes, LiveSync details, all settings, API, development |
+| `docs/architecture.py` | Generates the diagram (`python3 docs/architecture.py docs`) |
 
 ## License
 

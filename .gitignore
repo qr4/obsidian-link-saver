@@ -5,6 +5,7 @@
 
 # Container state with the default DATA_DIR
 /data/
+/playground/
 
 # Python / tooling caches
 __pycache__/
