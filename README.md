@@ -8,7 +8,8 @@ Paste a URL (or use the bookmarklet, a keybinding, or the API) and it:
   [yt-dlp](https://github.com/yt-dlp/yt-dlp) supports);
 - transcribes videos with Whisper (on an NVIDIA GPU if you have one);
 - tags, summarizes and files each link with a local LLM through
-  [Ollama](https://ollama.com), as a bullet in a topic note under `Areas/`;
+  [Ollama](https://ollama.com), as a bullet in a topic note under `Areas/`
+  ([how](docs/llm.md));
 - keeps bulky files (videos, full clones) in a blob store outside the vault,
   served by the service, so your devices only sync what's worth searching.
 
@@ -493,6 +494,7 @@ provides the GPU, and shares are owned by `nobody:users` (`PUID=99`,
 | `skills/vault-maintenance/` | The Claude Code skill |
 | `tests/` | `pytest` suite for the service |
 | `docs/reference.md` | Blob store, folder indexes, LiveSync details, all settings, API, development |
+| `docs/llm.md` | How the LLM picks tags, writes the summary and chooses the Area note, with links into the code |
 | `docs/architecture.py` | Generates the diagram (`python3 docs/architecture.py docs`) |
 | `docs/screenshots/` | The screenshots above, from a fresh quick start |
 
