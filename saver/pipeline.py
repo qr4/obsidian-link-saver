@@ -68,6 +68,10 @@ def _park_duplicate(path: Path):
 # first few minutes of speech, enough to tell the subject, short enough to
 # leave room for the prompt around it.
 TRANSCRIPT_CHARS = 4000
+# Tags and summary read at most this much of the saved text: about 5,000-7,000
+# tokens, roughly the first 3,500 words. Untrimmed, a very long page plus the
+# prompt could exceed OLLAMA_NUM_CTX, and Ollama would cut the prompt silently.
+ANALYZE_CHARS = 20000
 
 
 def video_text(header: str, description: str, folder) -> str:
@@ -93,6 +97,10 @@ class Saver:
     def analyze(self, text, allow_thin=False, require_content=True):
         """Tags, summary and Area leaf for a piece of text - the LLM half
         every content type shares."""
+        if len(text) > ANALYZE_CHARS:
+            log(f"NOTE: the text is {len(text):,} characters long; tags and summary use the first "
+                f"{ANALYZE_CHARS:,}")
+            text = text[:ANALYZE_CHARS]
         stage("Tagging")
         tags = llm.extract_tags(text)
         check_cancelled()

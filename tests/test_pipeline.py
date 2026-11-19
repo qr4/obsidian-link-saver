@@ -211,3 +211,14 @@ def test_failure_after_capture_leaves_no_temp_file(env, capture, monkeypatch):
         Saver().save("https://blog.example.com/posts/slow")
     assert capture  # the page was captured before the failure
     assert not list((env["vault"] / "Dumps" / "single_page").glob("_capture-*"))
+
+
+def test_long_text_is_trimmed_before_the_llm(env, monkeypatch):
+    """A very long page would overflow the model's context window, and Ollama
+    cuts the prompt silently; tags and summary read only the start."""
+    seen = []
+    monkeypatch.setattr(saver_mod.llm, "extract_tags", lambda text: seen.append(len(text)) or ["t"])
+    monkeypatch.setattr(saver_mod.llm, "extract_summary",
+                        lambda text, require_content=True: seen.append(len(text)) or "s")
+    Saver().analyze("word " * 100_000)
+    assert seen == [saver_mod.ANALYZE_CHARS] * 2

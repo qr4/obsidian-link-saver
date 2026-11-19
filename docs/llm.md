@@ -50,16 +50,16 @@ Each content type builds the text it analyzes in its own save function:
 
 | Saved item | Text analyzed | Where |
 |---|---|---|
-| Web page | The page's visible text (SingleFile capture, or a plain fetch if that fails) | [`save_generic`](../saver/pipeline.py#L143-L205) |
-| SingleFile page from the inbox or an upload | The same, from the captured file | [`save_generic`](../saver/pipeline.py#L143-L205) |
-| Git repository | The text of the repository's web page, README included | [`save_git_repo`](../saver/pipeline.py#L210-L255) |
-| PDF | The text of the first 20 pages ([`extract_pdf_text`](../saver/fetch.py#L37-L40)). A scan without a text layer uses the file's embedded description instead, framed so the model describes the document | [`save_pdf`](../saver/pipeline.py#L313-L360) |
-| YouTube video, media.ccc.de talk | Title and channel (or speakers and conference), then the first 4,000 characters of the Whisper transcript, then the description ([`video_text`](../saver/pipeline.py#L73-L86)). The video is downloaded and transcribed first, so the transcript decides what it's about | [`save_youtube`](../saver/pipeline.py#L365-L406), [`save_ccc_talk`](../saver/pipeline.py#L408-L447) |
-| YouTube channel | The channel's title and description (one entry for the whole channel) | [`save_youtube_channel`](../saver/pipeline.py#L449-L517) |
+| Web page | The page's visible text (SingleFile capture, or a plain fetch if that fails) | [`save_generic`](../saver/pipeline.py#L151-L213) |
+| SingleFile page from the inbox or an upload | The same, from the captured file | [`save_generic`](../saver/pipeline.py#L151-L213) |
+| Git repository | The text of the repository's web page, README included | [`save_git_repo`](../saver/pipeline.py#L218-L263) |
+| PDF | The text of the first 20 pages ([`extract_pdf_text`](../saver/fetch.py#L37-L40)). A scan without a text layer uses the file's embedded description instead, framed so the model describes the document | [`save_pdf`](../saver/pipeline.py#L321-L368) |
+| YouTube video, media.ccc.de talk | Title and channel (or speakers and conference), then the first 4,000 characters of the Whisper transcript, then the description ([`video_text`](../saver/pipeline.py#L77-L90)). The video is downloaded and transcribed first, so the transcript decides what it's about | [`save_youtube`](../saver/pipeline.py#L373-L414), [`save_ccc_talk`](../saver/pipeline.py#L416-L455) |
+| YouTube channel | The channel's title and description (one entry for the whole channel) | [`save_youtube_channel`](../saver/pipeline.py#L457-L525) |
 
 ## The three steps
 
-[`Saver.analyze`](../saver/pipeline.py#L93-L107) runs the steps in order,
+[`Saver.analyze`](../saver/pipeline.py#L97-L115) runs the steps in order,
 shows each as a stage in the job ("Tagging", "Summarizing", "Choosing an
 Area"), and checks between them whether the job was cancelled.
 
@@ -104,7 +104,7 @@ When the verdict is `false`, the save stops with a
 and if the model left the summary empty,
 [`summarize_plain`](../saver/llm.py#L147-L164) asks again without the
 verdict. For a video, a rejected save also removes the download it just
-made ([`analyze_download`](../saver/pipeline.py#L120-L130)), since nothing
+made ([`analyze_download`](../saver/pipeline.py#L128-L138)), since nothing
 would link to it.
 
 ### 3. Area location
@@ -161,7 +161,7 @@ note under the vault lock. On a re-save, it first removes the previous
 bullet, found by the exact text the registry stored, in the same locked
 step. A re-save asks all three questions again, so the entry can move to a
 different note. When the service manages the folder indexes, they're
-refreshed right after ([`write_entry`](../saver/pipeline.py#L114-L118)).
+refreshed right after ([`write_entry`](../saver/pipeline.py#L122-L126)).
 
 ## Two more questions
 
@@ -172,7 +172,7 @@ refreshed right after ([`write_entry`](../saver/pipeline.py#L114-L118)).
   site, and for PDFs without an embedded title (common for LaTeX papers).
 - **"Is this a git repository?"** For a page on an unknown host, a
   self-hosted Gitea or GitLab for example,
-  [`detect_git_repo`](../saver/pipeline.py#L611-L648) asks
+  [`detect_git_repo`](../saver/pipeline.py#L619-L656) asks
   [`detect_git_repo_prompt`](../saver/llm.py#L220-L238) for the owner and
   repository name. It's only asked when the page shows signs of a code
   forge (a forge's name, a clone URL); ordinary articles skip it. The host
@@ -185,10 +185,11 @@ refreshed right after ([`write_entry`](../saver/pipeline.py#L114-L118)).
   63,000 characters (22,000 tokens) for 1,500 notes, and it grows with the
   vault. Raise `OLLAMA_NUM_CTX` for a much larger vault, within what your
   graphics card's memory allows.
-- **Long pages.** For tags and summary the text goes in untrimmed (PDFs
-  stop at 20 pages). A very long page, plus the prompt, can exceed
-  `OLLAMA_NUM_CTX`; Ollama then cuts the prompt, and the answer gets worse
-  without an error.
+- **Long pages.** Tags and summary read at most the first 20,000
+  characters (about 3,500 words), trimmed in
+  [`Saver.analyze`](../saver/pipeline.py#L97-L115); the job log notes it when
+  that happens. Untrimmed, a very long page plus the prompt could exceed
+  `OLLAMA_NUM_CTX`, and Ollama would cut the prompt silently.
 - **Speed.** A save makes three requests (tags, summary, area); a web page
   makes four, with the title, and five when the repository check runs. The first one after Ollama has been idle also
   pays for loading the model, which can take minutes for a large model;
