@@ -1,0 +1,18 @@
+# The images need only pyproject.toml, saver/ and docker/ (the bridge image
+# builds from livesync/ on its own)
+.git/
+data/
+docs/
+skills/
+tests/
+client/
+deploy/
+livesync/
+*.md
+LICENSE
+.env
+.env.*
+client.env*
+docker-compose*.yml
+**/__pycache__/
+*.egg-info/

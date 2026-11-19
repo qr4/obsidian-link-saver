@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Split the five oversized dirs diag.py still flags.
+"""Example plan: split the five oversized dirs diag.py flagged in one vault.
+
+Copy it outside the skill directory and adapt it; it only applies to the
+vault it was written for.
 
   hobbies/reading (34)  hobbies/board-games (24)  programming/clojure/web (18)
   electronics/projects (18)  security/pentesting (16)
@@ -24,7 +27,8 @@ has to be inside the lock too.
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+SCRIPTS = Path(__file__).resolve().parent  # in a copy elsewhere: Path("<skill dir>/scripts")
+sys.path.insert(0, str(SCRIPTS))
 import migrate
 from migrate import Migration, log
 

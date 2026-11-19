@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Update the stack from git and rebuild it. Run it on the server, inside a git
-# checkout of this repository:
+# Update the stack from git and rebuild it. Run it on the server, in the clone
+# of this repository the stack builds from:
 #
-#   Tools/save-service/deploy/update.sh [--project-dir DIR] [--rebuild] [-y]
+#   deploy/update.sh [--project-dir DIR] [--rebuild] [-y]
 #
 #   --project-dir DIR  the folder Compose runs from: it holds .env and, for a
 #                      stack manager such as Unraid's Compose Manager, its own
 #                      copy of docker-compose.yml (plus an override file).
-#                      Default: this save-service folder.
+#                      Default: the clone itself.
 #   --rebuild          skip git; only sync the compose file, build and restart
 #                      (e.g. after rolling back to an earlier commit)
 #   -y, --yes          don't ask before each step
@@ -16,7 +16,7 @@
 # changes), copy docker-compose.yml into the project folder when it differs,
 # build the images, and restart only if the build succeeded. Data folders
 # (DATA_DIR, VAULT_DIR, BLOBS_DIR) are never touched. When the project folder
-# isn't this one, its .env must set STACK_DIR to this folder.
+# isn't the clone, its .env must set STACK_DIR to the clone.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -41,7 +41,7 @@ confirm() {
 
 cd "$here"
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-    || { echo "$here is not inside a git checkout" >&2; exit 1; }
+    || { echo "$here is not a git clone (deploy/push.sh is the alternative)" >&2; exit 1; }
 before="$(git rev-parse HEAD)"
 
 # --- 1. git ------------------------------------------------------------------
@@ -70,8 +70,8 @@ if [ "$rebuild" = 0 ]; then
     echo "Incoming commits:"
     git log --oneline --no-decorate "HEAD..$upstream"
     echo
-    echo "Changed in save-service:"
-    git diff --stat "HEAD..$upstream" -- . | tail -n 25
+    echo "Changed files:"
+    git diff --stat "HEAD..$upstream" | tail -n 25
     echo
     confirm "Fast-forward $branch to $(git rev-parse --short "$upstream")?"
     git merge --ff-only --quiet "$upstream"

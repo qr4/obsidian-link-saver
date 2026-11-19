@@ -7,7 +7,7 @@ description: Audit and restructure the Areas/ tree of this Obsidian vault - find
 
 ## How the vault works
 
-The save service (`Tools/save-service`) turns a URL into one **entry**: a `- #tags` line, an
+The save service turns a URL into one **entry**: a `- #tags` line, an
 LLM summary, a `[[Dumps/…]]` attachment link, and the raw URL. Entries are
 appended to a **leaf note** under `Areas/<area>/…`. A note whose name matches
 its own folder (`hobbies/hobbies.md`) is a **folder note** — its Waypoint index
@@ -18,8 +18,12 @@ The **registry** maps each saved URL to `area_note` (path relative to
 the old bullet by searching that file for that text. The registry lives in
 the service's SQLite database: set `SAVE_SERVICE_URL` (and
 `SAVE_SERVICE_TOKEN` if it has one) in the environment or in
-`Tools/save-service/client.env`, and `vault.py` reads and patches it over
-the service's API. Unset, the registry scripts refuse to run.
+`~/.config/obsidian-save/client.env`, and `vault.py` reads and patches it
+over the service's API. Unset, the registry scripts refuse to run.
+
+The scripts find the vault themselves: `OBSIDIAN_VAULT`, else the nearest
+folder above the working directory that holds `.obsidian/`. Run them from
+the vault root, by path from this skill's directory (`$SKILL` below).
 
 ## Non-negotiables
 
@@ -48,16 +52,20 @@ the service's API. Unset, the registry scripts refuse to run.
 ## Workflow
 
 ```bash
-cd .claude/skills/vault-maintenance/scripts
-python3 test_vault.py      # parsing regression tests (fast, run after editing vault.py)
-python3 diag.py            # audit: read this before changing anything
-# write a plan.py using migrate.py's primitives, then:
-python3 plan.py            # dry run - prints every op, writes nothing
-python3 plan.py --apply    # Migration() holds the lock across read and write
-python3 fix_registry.py --apply
-python3 waypoints.py --apply   # asks the save service to regenerate indexes (or writes them if it doesn't manage them)
-python3 diag.py            # confirm clean
+cd <vault>                              # SKILL=<this skill's directory>
+python3 $SKILL/scripts/test_vault.py    # parsing regression tests (fast, run after editing vault.py)
+python3 $SKILL/scripts/diag.py          # audit: read this before changing anything
+# write /tmp/plan.py with migrate.py's primitives (start from
+# scripts/example_plan.py; it needs sys.path.insert(0, "$SKILL/scripts")), then:
+python3 /tmp/plan.py                    # dry run - prints every op, writes nothing
+python3 /tmp/plan.py --apply            # Migration() holds the lock across read and write
+python3 $SKILL/scripts/fix_registry.py --apply
+python3 $SKILL/scripts/waypoints.py --apply   # asks the save service to regenerate indexes (or writes them if it doesn't manage them)
+python3 $SKILL/scripts/diag.py          # confirm clean
 ```
+
+Keep plans out of the skill's directory: it's usually a symlink into a git
+checkout.
 
 `migrate.py` gives you `move`, `move_many`, `merge`, `delete`, `move_entry`,
 `drop_entry`, `edit`, `retag`, `flush`. Operations address entries by a
@@ -135,7 +143,7 @@ notes; keep the plugin disabled in Obsidian.
 ## Re-saving through the service
 
 To re-file an existing entry, prefer a forced re-save over hand-editing:
-`Tools/save-service/client/obsidian-save <url> --force --wait` (or
+`obsidian-save <url> --force --wait` (the repository's `client/`; or
 *Re-save* in the web UI). It goes through `replace_area_entry`, so the old
 bullet is removed and the registry updated atomically.
 
@@ -167,10 +175,11 @@ a gist's comment thread.
 
 | script | purpose |
 | --- | --- |
-| `vault.py` | shared model: parse notes into entries, Obsidian link resolution, `file_lock()`, URL normalisation. Vault root derives from the script path; override with `OBSIDIAN_VAULT`. |
+| `vault.py` | shared model: parse notes into entries, Obsidian link resolution, `file_lock()`, URL normalisation, service config. Finds the vault from the working directory; override with `OBSIDIAN_VAULT`. |
 | `diag.py` | audit: stale/ambiguous links, name collisions, duplicate URLs and attachments, near-duplicate entries, untagged entries, oversized dirs |
 | `migrate.py` | entry/note-level migration primitives + dry-run `flush()`. `Migration` is a context manager and holds the vault lock across the read-mutate-write cycle |
 | `fix_registry.py` | re-point the save service's registry at post-migration paths |
 | `waypoints.py` | create missing folder notes, regenerate Waypoint indexes (via the save service when configured) |
 | `chains.py` | recover post series from a crawled site's back-link graph |
+| `example_plan.py` | a real restructure plan (splitting oversized folders), as a template |
 | `test_vault.py` | regression tests for the parsing primitives — run after editing `vault.py` |

@@ -70,8 +70,9 @@ check("vault index", is_folder_note("Areas.md"), True)
 check("leaf note", is_folder_note("hobbies/coffee.md"), False)
 
 # ── entry splitting keeps continuation lines with their bullet ────────────
-pre, ents = split_entries("%% Waypoint %%\n- #a\n\tsummary\n\thttps://x.test\n- #b\n\tsecond\n")
-check("preamble kept", pre.strip(), "%% Waypoint %%")
+FLAG = "%" * 2 + " Waypoint " + "%" * 2  # assembled: the Waypoint plugin rewrites files containing it
+pre, ents = split_entries(FLAG + "\n- #a\n\tsummary\n\thttps://x.test\n- #b\n\tsecond\n")
+check("preamble kept", pre.strip(), FLAG)
 check("two entries", len(ents), 2)
 check("continuation lines attached", ents[0].count("\n"), 3)
 

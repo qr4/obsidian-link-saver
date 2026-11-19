@@ -9,11 +9,12 @@ a terminal (e.g. from a keybinding) progress and results go to notify-send.
 Invoked through a symlink whose name contains "crawl" (obsidian-crawl-site),
 it crawls by default:
 
-  ln -sf <vault>/Tools/save-service/client/obsidian-save ~/.local/bin/obsidian-save
-  ln -sf <vault>/Tools/save-service/client/obsidian-save ~/.local/bin/obsidian-crawl-site
+  ln -sf <repo>/client/obsidian-save ~/.local/bin/obsidian-save
+  ln -sf <repo>/client/obsidian-save ~/.local/bin/obsidian-crawl-site
 
-Configuration: SAVE_SERVICE_URL / SAVE_SERVICE_TOKEN from the environment
-or from Tools/save-service/client.env.
+Configuration: SAVE_SERVICE_URL / SAVE_SERVICE_TOKEN from the environment,
+else from the first client.env found: $OBSIDIAN_SAVE_CONFIG,
+~/.config/obsidian-save/client.env, <repo>/client.env.
 """
 import argparse
 import json
@@ -28,14 +29,24 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-CLIENT_ENV = Path(__file__).resolve().parent.parent / "client.env"
 INTERACTIVE = sys.stdout.isatty()
+
+
+def client_env():
+    """The first client.env that exists (the vault-maintenance skill looks
+    in the same places)."""
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    candidates = [os.environ.get("OBSIDIAN_SAVE_CONFIG"),
+                  config_home / "obsidian-save" / "client.env",
+                  Path(__file__).resolve().parent.parent / "client.env"]
+    return next((Path(c) for c in candidates if c and Path(c).is_file()), None)
 
 
 def config():
     values = {}
-    if CLIENT_ENV.is_file():
-        for line in CLIENT_ENV.read_text().splitlines():
+    path = client_env()
+    if path:
+        for line in path.read_text().splitlines():
             key, sep, value = line.partition("=")
             if sep and not key.strip().startswith("#"):
                 values[key.strip()] = value.strip().strip('"').strip("'")

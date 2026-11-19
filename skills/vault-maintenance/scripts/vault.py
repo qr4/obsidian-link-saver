@@ -17,13 +17,33 @@ from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
-# Walk up from this file (.claude/skills/vault-maintenance/scripts/) to the
-# vault root, so the scripts work from any cwd and survive the vault moving.
-# OBSIDIAN_VAULT overrides for running against a copy.
-VAULT = Path(os.environ.get("OBSIDIAN_VAULT")
-             or Path(__file__).resolve().parents[4])
+def find_vault() -> Path:
+    """OBSIDIAN_VAULT, else the nearest folder holding .obsidian/ above the
+    working directory or above this script.
+
+    The skill is usually symlinked into <vault>/.claude/skills/, so the
+    script's resolved path lies in the repository, not the vault. $PWD keeps
+    the path as the shell saw it (through the symlink); os.getcwd() would
+    resolve it too, so it's used only while it still names the same folder."""
+    if os.environ.get("OBSIDIAN_VAULT"):
+        return Path(os.environ["OBSIDIAN_VAULT"]).expanduser()
+    starts = []
+    pwd = os.environ.get("PWD")
+    if pwd and Path(pwd).is_dir() and Path(pwd).resolve() == Path.cwd().resolve():
+        starts.append(Path(pwd))
+    starts += [Path.cwd(), Path(os.path.abspath(__file__)).parent]
+    for start in starts:
+        for folder in (start, *start.parents):
+            if (folder / ".obsidian").is_dir():
+                return folder
+    raise SystemExit("can't find the vault (no .obsidian/ above the working directory): "
+                     "run from inside the vault or set OBSIDIAN_VAULT")
+
+
+VAULT = find_vault()
 AREAS = VAULT / "Areas"
 LOCK = VAULT / ".vault-maintenance.lock"
+SKILL_DIR = Path(__file__).resolve().parents[1]
 
 if not AREAS.is_dir():
     raise SystemExit(f"no Areas/ under {VAULT} - set OBSIDIAN_VAULT to the vault root")
@@ -39,19 +59,27 @@ TAG_LINE_RE = re.compile(r"^- ((?:#[a-z0-9][\w-]*\s*)+)$")
 
 
 # ---------------------------------------------------------------------------
-# The save service (Tools/save-service) owns the registry (its SQLite
-# database) and appends to Area notes from another machine. Configure it with
-# SAVE_SERVICE_URL / SAVE_SERVICE_TOKEN in the environment or in
-# Tools/save-service/client.env. Unset, the scripts lock locally only and
+# The save service owns the registry (its SQLite database) and appends to
+# Area notes from another machine. Configure it with SAVE_SERVICE_URL /
+# SAVE_SERVICE_TOKEN in the environment or in a client.env, found where the
+# obsidian-save client looks: $OBSIDIAN_SAVE_CONFIG,
+# ~/.config/obsidian-save/client.env, then client.env at the root of the
+# repository this skill came from. Unset, the scripts lock locally only and
 # the registry tools refuse to run.
 # ---------------------------------------------------------------------------
-CLIENT_ENV = VAULT / "Tools" / "save-service" / "client.env"
+def client_env():
+    config_home = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+    candidates = [os.environ.get("OBSIDIAN_SAVE_CONFIG"),
+                  config_home / "obsidian-save" / "client.env",
+                  SKILL_DIR.parents[1] / "client.env"]
+    return next((Path(c) for c in candidates if c and Path(c).is_file()), None)
 
 
 def _service_config():
     values = {}
-    if CLIENT_ENV.is_file():
-        for line in CLIENT_ENV.read_text(encoding="utf-8").splitlines():
+    path = client_env()
+    if path:
+        for line in path.read_text(encoding="utf-8").splitlines():
             key, sep, value = line.partition("=")
             if sep and not key.strip().startswith("#"):
                 values[key.strip()] = value.strip().strip('"').strip("'")
@@ -65,7 +93,7 @@ SERVICE_URL, SERVICE_TOKEN = _service_config()
 
 def require_service():
     if not SERVICE_URL:
-        raise SystemExit("set SAVE_SERVICE_URL (environment or Tools/save-service/client.env): "
+        raise SystemExit("set SAVE_SERVICE_URL (environment or ~/.config/obsidian-save/client.env): "
                          "the registry lives in the save service")
 
 

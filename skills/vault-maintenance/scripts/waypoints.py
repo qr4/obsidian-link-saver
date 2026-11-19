@@ -8,8 +8,9 @@ follow (two machines rewriting the same folder note before they sync). So:
     managing waypoints, this only asks the service to refresh; nothing is
     written from this machine
   - otherwise it writes the indexes locally with the service's generator
-    (Tools/save-service/saver/waypoints.py), which reproduces the Waypoint
-    plugin's output exactly
+    (saver/waypoints.py in this repository), which reproduces the Waypoint
+    plugin's output exactly. It's found next to the skill (when the skill is
+    symlinked from a clone of the repository) or through SAVE_SERVICE_SRC
 
 New folders still need a folder note carrying the Waypoint flag; the
 generator fills every folder note that has the flag or a Begin/End block.
@@ -22,10 +23,23 @@ sys.path.insert(0, str(Path(__file__).parent))
 from vault import SERVICE_URL, VAULT, file_lock, service_request  # noqa: E402
 
 sys.dont_write_bytecode = True  # no __pycache__ inside the synced vault
-sys.path.insert(0, str(VAULT / "Tools" / "save-service"))
-from saver import waypoints  # noqa: E402
-
 APPLY = "--apply" in sys.argv
+# Assembled at runtime like saver.waypoints does: the Waypoint plugin scans
+# every vault file (this one too, when the skill sits in the vault).
+_PCT = "%" * 2
+WAYPOINT_FLAG = f"{_PCT} Waypoint {_PCT}"
+
+
+def load_generator():
+    """The service's waypoints module, or None when the source isn't here."""
+    import os
+    from vault import SKILL_DIR
+    for src in (os.environ.get("SAVE_SERVICE_SRC"), SKILL_DIR.parents[1]):
+        if src and (Path(src) / "saver" / "waypoints.py").is_file():
+            sys.path.insert(0, str(src))
+            from saver import waypoints
+            return waypoints
+    return None
 
 
 def create_missing_folder_notes() -> list:
@@ -36,7 +50,7 @@ def create_missing_folder_notes() -> list:
                if d.is_dir() and not d.name.startswith(".") and not (d / f"{d.name}.md").exists()]
     if APPLY:
         for note in missing:
-            note.write_text(waypoints.WAYPOINT_FLAG + "\n", encoding="utf-8")
+            note.write_text(WAYPOINT_FLAG + "\n", encoding="utf-8")
     for note in missing:
         print(f"  {'created' if APPLY else 'would create'}: {note.relative_to(VAULT)}")
     return missing
@@ -45,10 +59,12 @@ def create_missing_folder_notes() -> list:
 with file_lock():
     create_missing_folder_notes()
 
+waypoints = load_generator()
 if SERVICE_URL:
     if not APPLY:
-        print(f"{len(waypoints.plan(VAULT))} folder notes are stale; the save service at {SERVICE_URL} "
-              "regenerates them (run with --apply to trigger it now)")
+        stale = f"{len(waypoints.plan(VAULT))} folder notes are stale; " if waypoints else ""
+        print(f"{stale}the save service at {SERVICE_URL} regenerates them "
+              "(run with --apply to trigger it now)")
         sys.exit(0)
     try:
         changed = service_request("POST", "/api/waypoints/refresh")["changed"]
@@ -61,6 +77,9 @@ if SERVICE_URL:
     except (urllib.error.URLError, OSError) as e:
         sys.exit(f"save service unreachable ({e}); not writing locally - that would make two writers")
 
+if waypoints is None:
+    sys.exit("the save service isn't configured (SAVE_SERVICE_URL) and its source isn't next to the "
+             "skill: set SAVE_SERVICE_SRC to a clone of the repository to write the indexes locally")
 changes = waypoints.plan(VAULT)
 for note, _ in changes:
     print(f"  {note.relative_to(VAULT)}")
