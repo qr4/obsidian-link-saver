@@ -63,6 +63,28 @@ def _park_duplicate(path: Path):
     path.rename(unique_destination(dup_dir, path.name))
 
 
+# The start of a video's transcript is what the LLM files it by: about the
+# first few minutes of speech, enough to tell the subject, short enough to
+# leave room for the prompt around it.
+TRANSCRIPT_CHARS = 4000
+
+
+def video_text(header: str, description: str, folder) -> str:
+    """Header (title, channel...), the start of the Whisper transcript when
+    the download produced one, then the description. A description alone
+    misleads: it's often promotion, a link list, or about something else
+    entirely ("Me at the zoo" now links microplastics research)."""
+    parts = [header]
+    transcript = Path(folder) / "out.txt" if folder else None
+    if transcript is not None and transcript.is_file():
+        spoken = transcript.read_text(encoding="utf-8", errors="replace").strip()
+        if spoken:
+            parts.append("Transcript (start):\n" + spoken[:TRANSCRIPT_CHARS])
+    if description:
+        parts.append("Description:\n" + description)
+    return "\n\n".join(parts)
+
+
 class Saver:
     # ------------------------------------------------------------------
     # shared steps
@@ -337,8 +359,6 @@ class Saver:
 
         title = meta["title"]
         video_id = meta.get("id") or video_id
-        text_for_llm = f"Title: {title}\nChannel: {meta.get('uploader', '')}\n\n{meta.get('description', '')}"
-        tags, summary, topic_area = self.analyze(text_for_llm, allow_thin=allow_thin)
 
         safe_title = safe_segment(sanitize_filename(title)[:120])
         safe_channel = safe_segment(sanitize_filename(meta.get("uploader") or "unknown-channel")[:120])
@@ -354,6 +374,13 @@ class Saver:
         except Exception as e:  # noqa: BLE001
             log(f"WARNING: video download failed ({e}) - the Area entry links the source URL instead. "
                 "Retry the job once the cause (cookies, rate limit) is fixed.")
+
+        # Filed after the download, so the transcript (when there is one)
+        # decides what the video is about, not just its description.
+        tags, summary, topic_area = self.analyze(
+            video_text(f"Title: {title}\nChannel: {meta.get('uploader', '')}", meta.get("description", ""),
+                       target_dir if video_file else None),
+            allow_thin=allow_thin)
 
         # No companion .md note - the folder of mkv + subtitles *is* the
         # artifact. Link the mkv; fall back to the URL if the download failed.
@@ -374,9 +401,6 @@ class Saver:
             raise SaveError(f"could not fetch media.ccc.de metadata: {e}") from e
 
         title, talk_id = meta["title"], meta["id"] or "unknown"
-        text_for_llm = (f"Title: {title}\nSpeakers: {meta['speakers']}\n"
-                        f"Conference: {meta['conference']}\n\n{meta['description']}")
-        tags, summary, topic_area = self.analyze(text_for_llm, allow_thin=allow_thin)
 
         safe_title = safe_segment(sanitize_filename(title)[:120])
         safe_conf = safe_segment(sanitize_filename(meta["conference"] or "unknown-conference")[:120])
@@ -393,6 +417,11 @@ class Saver:
             raise
         except Exception as e:  # noqa: BLE001
             log(f"WARNING: talk download failed ({e}) - the Area entry links the source URL instead")
+
+        tags, summary, topic_area = self.analyze(
+            video_text(f"Title: {title}\nSpeakers: {meta['speakers']}\nConference: {meta['conference']}",
+                       meta["description"], target_dir if video_file else None),
+            allow_thin=allow_thin)
 
         if video_file:
             blobs.mirror_video("video", f"media.ccc.de/{rel_dir}", video_file)

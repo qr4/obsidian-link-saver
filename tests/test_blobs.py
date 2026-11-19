@@ -428,3 +428,45 @@ def test_watch_page_links_the_original(client, store):
     other.mkdir(parents=True)
     (other / "clip.mp4").write_bytes(b"\0" * 64)
     assert 'id="original"' not in client.get("/watch/video/elsewhere/clip.mp4").text
+
+
+def test_video_is_filed_by_its_transcript_not_just_its_description(store, env, monkeypatch):
+    """Analysis runs after the download, on the transcript's start as well:
+    a description can be about something else entirely."""
+    monkeypatch.setattr(media, "fetch_youtube_metadata", lambda url: {
+        "id": "jNQXAC9IVRw", "title": "Me at the zoo", "uploader": "jawed",
+        "description": "Links about microplastics in the brain"})
+    analyzed = []
+
+    def fake_download(url, target_dir):
+        video = make_video_dir(target_dir)
+        (target_dir / "out.txt").write_text("Here we are, one of the elephants.\n")
+        return video
+
+    def fake_analyze(self, text, allow_thin=False, require_content=True):
+        analyzed.append(text)
+        return ["zoo"], "A short clip at the zoo.", "nature/zoo.md"
+
+    monkeypatch.setattr(media, "download_youtube_video", fake_download)
+    monkeypatch.setattr(Saver, "analyze", fake_analyze)
+    Saver().save("https://www.youtube.com/watch?v=jNQXAC9IVRw")
+
+    assert len(analyzed) == 1
+    text = analyzed[0]
+    assert "elephants" in text and "microplastics" in text
+    assert text.index("Transcript") < text.index("Description")
+
+
+def test_video_falls_back_to_metadata_when_the_download_fails(store, env, monkeypatch):
+    monkeypatch.setattr(media, "fetch_youtube_metadata", lambda url: {
+        "id": "abc123def45", "title": "Talk", "uploader": "Chan", "description": "about things"})
+    analyzed = []
+
+    def failing_download(url, target_dir):
+        raise RuntimeError("rate limited")
+
+    monkeypatch.setattr(media, "download_youtube_video", failing_download)
+    monkeypatch.setattr(Saver, "analyze",
+                        lambda self, text, **kw: analyzed.append(text) or (["x"], "s", "misc/x.md"))
+    Saver().save("https://www.youtube.com/watch?v=abc123def45")
+    assert analyzed == ["Title: Talk\nChannel: Chan\n\nDescription:\nabout things"]
