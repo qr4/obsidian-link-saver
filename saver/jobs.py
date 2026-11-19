@@ -160,6 +160,7 @@ class JobManager:
                 "max_pages": int(crawl_options.get("max_pages", 50)),
                 "scope": "domain" if crawl_options.get("scope") == "domain" else "path",
                 "pdf_only": bool(crawl_options.get("pdf_only", False)),
+                "extra_hosts": crawl.normalize_hosts(crawl_options.get("extra_hosts")),
             })
         job_id = self.enqueue(type_, url, options)
         return {"url": url, "status": "queued", "job_id": job_id}
@@ -228,7 +229,8 @@ class JobManager:
             crawl.run_crawl(job["url"], max_depth=options.get("max_depth", 3),
                             max_pages=options.get("max_pages", 50), scope=options.get("scope", "path"),
                             force=options.get("force", False), pdf_only=options.get("pdf_only", False),
-                            allow_thin=options.get("allow_thin", False))
+                            allow_thin=options.get("allow_thin", False),
+                            extra_hosts=options.get("extra_hosts", []))
             return "done"
         if job["type"] == "update_repos":
             from . import blobs

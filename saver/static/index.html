@@ -68,6 +68,9 @@
                   <small>Below start page: after the first hop, only URLs under the start page's folder</small></label>
                 <label class="check pdf-only"><input type="checkbox" id="crawl-pdf"> <span>PDFs only
                   <small>Save only PDFs; HTML pages are just used to find them</small></span></label>
+                <label class="extra-hosts">Also follow links to <input type="text" id="crawl-hosts"
+                    placeholder="blog.example.org, other.example.org" autocomplete="off" spellcheck="false">
+                  <small>Other sites the start page links to: those pages are saved too, but not crawled further</small></label>
               </div>
               <div class="actions">
                 <button type="submit" class="btn primary" id="submit-btn">Save links</button>

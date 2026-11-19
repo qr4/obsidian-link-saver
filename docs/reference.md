@@ -244,7 +244,7 @@ curl -X POST $URL/api/links -H 'Content-Type: application/json' \
      -d '{"urls": ["https://example.com/post", "https://github.com/rxi/json.lua"], "force": false, "allow_thin": false}'
 # crawl
 curl -X POST $URL/api/links -H 'Content-Type: application/json' \
-     -d '{"url": "https://site.org/docs/", "crawl": {"max_depth": 2, "max_pages": 30, "scope": "path"}}'
+     -d '{"url": "https://site.org/docs/", "crawl": {"max_depth": 2, "max_pages": 30, "scope": "path", "extra_hosts": ["blog.site.org"]}}'
 # upload files (optional "source" = original URL of a single PDF)
 curl -F files=@paper.pdf -F source=https://example.org/paper.pdf $URL/api/upload
 ```

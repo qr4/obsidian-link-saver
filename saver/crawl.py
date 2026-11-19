@@ -6,6 +6,7 @@ treatment as one saved by hand and shows up individually in the UI. Child
 jobs carry relocate_domain, so once a generic page is saved its dump moves
 into Dumps/single_page/<domain>/.
 """
+import re
 from collections import deque
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -26,10 +27,28 @@ FETCH_TIMEOUT = 30
 LINK_ONLY_PAGES_FACTOR = 10
 CRAWLER_UA = "Mozilla/5.0 (compatible; obsidian-save-service crawler)"
 
-# The crawl is same-host only; these are hand-listed exceptions, applied
-# only to first-level links (never crawled onward). lcamtuf.coredump.cx/
-# offsite.shtml indexes writing that lives on blog.coredump.cx.
-CROSS_HOST_ALLOWED = {"blog.coredump.cx"}
+# The crawl stays on the start page's host. A crawl's extra_hosts option
+# names other hosts whose pages the start page links to (an index page of
+# writing hosted elsewhere); those are saved but never crawled onward.
+MAX_EXTRA_HOSTS = 20
+
+
+def normalize_hosts(values) -> list:
+    """Host names from user input: "blog.example.org", a pasted URL, or a
+    comma/space separated string. Lowercased, deduplicated, at most
+    MAX_EXTRA_HOSTS."""
+    if isinstance(values, str):
+        values = [values]
+    hosts = []
+    for value in values or []:
+        for part in re.split(r"[\s,]+", str(value)):
+            if not part:
+                continue
+            host = (urlparse(part).netloc if "://" in part else part.split("/", 1)[0]).lower()
+            # a dot is required: stray words ("not a host") never become hosts
+            if re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?", host) and host not in hosts:
+                hosts.append(host)
+    return hosts[:MAX_EXTRA_HOSTS]
 
 
 def looks_like_page_or_pdf(url: str) -> bool:
@@ -49,19 +68,19 @@ def is_pdf_link(url: str) -> bool:
     return urlparse(url).path.lower().endswith(".pdf")
 
 
-def in_scope(url: str, seed_parsed, scope: str, link_depth: int = 2) -> bool:
+def in_scope(url: str, seed_parsed, scope: str, link_depth: int = 2, extra_hosts=()) -> bool:
     """First-level links (found on the seed page) are followed whatever
     their path - a seed routinely links siblings one level up. From the
     second hop on the seed's path prefix is enforced (scope="path"), so one
     off-prefix link can't snowball into crawling the whole site. Host is
-    stricter: same host at every depth, CROSS_HOST_ALLOWED at depth 1 only."""
+    stricter: same host at every depth, extra_hosts at depth 1 only."""
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         return False
     if not looks_like_page_or_pdf(url):
         return False
     if parsed.netloc != seed_parsed.netloc:
-        return link_depth <= 1 and parsed.netloc in CROSS_HOST_ALLOWED
+        return link_depth <= 1 and parsed.netloc.lower() in extra_hosts
     if scope == "path" and link_depth > 1:
         seed_dir = seed_parsed.path.rsplit("/", 1)[0] + "/"
         return parsed.path.startswith(seed_dir)
@@ -140,7 +159,7 @@ def relocate_into_domain_folder(url: str, domain: str):
 
 
 def run_crawl(seed_url: str, max_depth: int = 3, max_pages: int = 50, scope: str = "path",
-              force: bool = False, pdf_only: bool = False, allow_thin: bool = False):
+              force: bool = False, pdf_only: bool = False, allow_thin: bool = False, extra_hosts=()):
     from .jobs import enqueue  # late import: jobs imports this module
 
     reporter = current()
@@ -179,7 +198,7 @@ def run_crawl(seed_url: str, max_depth: int = 3, max_pages: int = 50, scope: str
         if depth >= max_depth:
             continue
         for link in discover_links(url):
-            if link not in seen and in_scope(link, seed_parsed, scope, depth + 1):
+            if link not in seen and in_scope(link, seed_parsed, scope, depth + 1, extra_hosts):
                 seen.add(link)
                 queue.append((link, depth + 1))
 

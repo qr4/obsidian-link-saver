@@ -353,7 +353,7 @@ ln -s ~/src/obsidian-link-saver/client/obsidian-save ~/.local/bin/obsidian-save
 ln -s ~/src/obsidian-link-saver/client/obsidian-save ~/.local/bin/obsidian-crawl-site   # crawls by default
 ```
 
-`obsidian-save URL… [--force] [--thin] [--crawl --depth 2 --pages 30] [--file paper.pdf --source URL] [--wait]`.
+`obsidian-save URL… [--force] [--thin] [--crawl --depth 2 --pages 30 --also-host blog.example.org] [--file paper.pdf --source URL] [--wait]`.
 Bind `obsidian-save` to a key in your desktop environment.
 
 ### 11. Claude Code skill (optional)

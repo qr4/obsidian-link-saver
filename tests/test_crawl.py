@@ -11,7 +11,10 @@ def test_in_scope_rules():
     assert in_scope("https://site.org/docs/a/b", seed, "path", link_depth=2)
     assert in_scope("https://site.org/guides/x", seed, "domain", link_depth=3)
     assert not in_scope("https://other.org/docs/a", seed, "domain", link_depth=1)
-    assert in_scope("https://blog.coredump.cx/post", seed, "path", link_depth=1)
+    # extra hosts: followed from the start page only, never by default
+    assert not in_scope("https://blog.example.org/post", seed, "path", link_depth=1)
+    assert in_scope("https://blog.example.org/post", seed, "path", link_depth=1, extra_hosts=["blog.example.org"])
+    assert not in_scope("https://blog.example.org/post", seed, "path", link_depth=2, extra_hosts=["blog.example.org"])
     assert not in_scope("https://site.org/logo.png", seed, "domain", link_depth=1)
     assert in_scope("https://site.org/docs/paper.pdf", seed, "path", link_depth=2)
 
@@ -66,3 +69,29 @@ def test_pdf_only_crawl_stops_after_its_link_only_page_cap(env, monkeypatch):
     monkeypatch.setattr(jobs_mod, "enqueue", lambda *a, **kw: 0)
     crawl.run_crawl("https://site.org/docs/", max_depth=10, max_pages=5, pdf_only=True)
     assert len(fetched) == crawl.LINK_ONLY_PAGES_FACTOR * 5
+
+
+def test_extra_hosts_input_is_normalized():
+    assert crawl.normalize_hosts("Blog.Example.org, https://other.example.org/posts/  blog.example.org") == [
+        "blog.example.org", "other.example.org"]
+    assert crawl.normalize_hosts(["sub.example.org:8080/x", "not a host!", ""]) == ["sub.example.org:8080"]
+    assert crawl.normalize_hosts(None) == []
+    assert len(crawl.normalize_hosts([f"h{i}.example.org" for i in range(50)])) == crawl.MAX_EXTRA_HOSTS
+
+
+def test_extra_hosts_reach_the_crawl(env, monkeypatch):
+    """From the API's crawl options into the stored job, then into the crawl:
+    pages on an extra host linked from the start page are queued, but not
+    crawled onward."""
+    job = jobs_mod.manager.submit_url("https://site.org/index", crawl_options={
+        "max_depth": 2, "max_pages": 10, "extra_hosts": ["Blog.Example.org"]})
+    options = env["db"].get_job(job["job_id"])["options"]
+    assert options["extra_hosts"] == ["blog.example.org"]
+
+    pages = {"https://site.org/index": ["https://blog.example.org/post", "https://other.org/x"],
+             "https://blog.example.org/post": ["https://blog.example.org/next"]}
+    monkeypatch.setattr(crawl, "discover_links", lambda url: pages.get(url, []))
+    queued = []
+    monkeypatch.setattr(jobs_mod, "enqueue", lambda t, url, opts, parent_id=None: queued.append(url) or 0)
+    crawl.run_crawl("https://site.org/index", max_depth=2, max_pages=10, extra_hosts=options["extra_hosts"])
+    assert queued == ["https://site.org/index", "https://blog.example.org/post"]

@@ -112,6 +112,7 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
         max_pages: int = Field(50, ge=1, le=5000)
         scope: str = "path"
         pdf_only: bool = False
+        extra_hosts: List[str] = Field(default_factory=list, max_length=20)
 
     class LinksRequest(BaseModel):
         urls: List[str] = []

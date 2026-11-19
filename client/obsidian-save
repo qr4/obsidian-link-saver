@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Send links to the Obsidian save service.
 
-  obsidian-save [URL ...] [--force] [--thin] [--crawl [--depth N] [--pages N] [--scope path|domain] [--pdf-only]]
+  obsidian-save [URL ...] [--force] [--thin] [--crawl [--depth N] [--pages N] [--scope path|domain] [--pdf-only]
+                [--also-host HOST ...]]
                 [--file PATH ...] [--wait]
 
 With no URL: the clipboard if it holds a link, else a Walker prompt. Without
@@ -142,6 +143,8 @@ def main():
     parser.add_argument("--pages", type=int, default=50)
     parser.add_argument("--scope", choices=["path", "domain"], default="path")
     parser.add_argument("--pdf-only", action="store_true")
+    parser.add_argument("--also-host", action="append", default=[], metavar="HOST",
+                        help="also save pages on this host that the start page links to (repeatable)")
     parser.add_argument("--file", action="append", type=Path, default=[], help="upload a PDF or SingleFile .html")
     parser.add_argument("--source", help="original URL of a single uploaded PDF")
     parser.add_argument("--wait", action="store_true", default=not INTERACTIVE,
@@ -159,7 +162,7 @@ def main():
             body = {"urls": urls, "force": args.force, "allow_thin": args.thin}
             if args.crawl:
                 body["crawl"] = {"max_depth": args.depth, "max_pages": args.pages,
-                                 "scope": args.scope, "pdf_only": args.pdf_only}
+                                 "scope": args.scope, "pdf_only": args.pdf_only, "extra_hosts": args.also_host}
             results = request("POST", "/api/links", body)["results"]
     except urllib.error.HTTPError as e:
         notify(f"{title} failed", f"{e.code}: {e.read().decode(errors='replace')[:300]}", "critical")

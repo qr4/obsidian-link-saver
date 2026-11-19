@@ -553,6 +553,7 @@ async function submitLinks(event) {
     body.crawl = {
       max_depth: Number($("#crawl-depth").value), max_pages: Number($("#crawl-pages").value),
       scope: $("#crawl-scope").value, pdf_only: $("#crawl-pdf").checked,
+      extra_hosts: $("#crawl-hosts").value.split(/[\s,]+/).filter(Boolean),
     };
   }
   const button = $("#submit-btn");

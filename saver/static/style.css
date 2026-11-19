@@ -140,6 +140,7 @@ textarea:focus, input:focus, select:focus { outline: 2px solid var(--accent); ou
   background: var(--surface-2); border-radius: 8px; padding: 10px 12px; margin-top: 8px;
 }
 .crawl-options label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.crawl-options .extra-hosts { grid-column: 1 / -1; }
 .crawl-options input, .crawl-options select { background: var(--surface); padding: 6px 8px; }
 .crawl-options { align-items: start; }
 .crawl-options .check { flex-direction: row; align-items: flex-start; color: var(--text); font-size: 14px; padding-top: 18px; }
