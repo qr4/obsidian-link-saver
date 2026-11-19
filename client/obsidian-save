@@ -113,7 +113,12 @@ def wait_for(job_ids, timeout=6 * 3600):
     deadline = time.time() + timeout
     while pending and time.time() < deadline:
         for job_id in list(pending):
-            job = request("GET", f"/api/jobs/{job_id}")
+            try:
+                job = request("GET", f"/api/jobs/{job_id}")
+            except (urllib.error.URLError, OSError, ValueError):
+                # The service restarting (an update) or a proxy hiccup: the
+                # job carries on there, so keep polling until the deadline.
+                continue
             if job["status"] not in ("queued", "running"):
                 pending.discard(job_id)
                 outcomes[job_id] = job

@@ -49,7 +49,8 @@ def call_raw(prompt: str) -> str:
         "prompt": prompt,
         "stream": False,
         "think": settings.ollama_think,
-        "options": {"temperature": settings.ollama_temperature},
+        "options": {"temperature": settings.ollama_temperature,
+                    **({"num_ctx": settings.ollama_num_ctx} if settings.ollama_num_ctx > 0 else {})},
     }
     response = requests.post(f"{settings.ollama_url}/api/generate", json=payload,
                              timeout=settings.ollama_timeout)

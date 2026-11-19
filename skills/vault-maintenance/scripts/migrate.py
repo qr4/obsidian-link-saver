@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from vault import AREAS, split_entries, is_content, is_folder_note, file_lock
+from vault import AREAS, split_entries, is_content, is_folder_note, file_lock, write_if_changed
 
 DRY = True
 log = []
@@ -187,7 +187,7 @@ class Migration:
             body = "".join(ents)
             if body and not body.endswith("\n"):
                 body += "\n"
-            p.write_text(self.preamble.get(rel, "") + body, encoding="utf-8")
+            write_if_changed(p, self.preamble.get(rel, "") + body)
         for d in sorted(AREAS.rglob("*"), key=lambda x: -len(x.parts)):
             if d.is_dir() and not any(d.iterdir()):
                 d.rmdir()

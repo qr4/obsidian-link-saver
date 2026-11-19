@@ -50,3 +50,19 @@ def test_crawl_enqueues_children(env, monkeypatch):
     urls = [u for u, _ in queued]
     assert urls == ["https://site.org/docs/", "https://site.org/docs/a", "https://site.org/docs/c"]
     assert queued[0][1]["relocate_domain"] == "site.org"
+
+
+def test_pdf_only_crawl_stops_after_its_link_only_page_cap(env, monkeypatch):
+    """HTML pages visited only to find PDFs don't count toward max_pages;
+    without their own cap a big site with few PDFs is crawled for hours."""
+    fetched = []
+
+    def endless(url):
+        fetched.append(url)
+        n = len(fetched)
+        return [f"https://site.org/docs/p{n}a", f"https://site.org/docs/p{n}b"]
+
+    monkeypatch.setattr(crawl, "discover_links", endless)
+    monkeypatch.setattr(jobs_mod, "enqueue", lambda *a, **kw: 0)
+    crawl.run_crawl("https://site.org/docs/", max_depth=10, max_pages=5, pdf_only=True)
+    assert len(fetched) == crawl.LINK_ONLY_PAGES_FACTOR * 5

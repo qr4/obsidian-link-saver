@@ -77,6 +77,10 @@ class Settings:
     # keep tagging/summarizing deterministic-ish
     ollama_temperature: float = field(default_factory=lambda: _float("OLLAMA_TEMPERATURE", 0.2))
     ollama_timeout: int = field(default_factory=lambda: _int("OLLAMA_TIMEOUT", 180))
+    # Context window per request. Filing a link sends the whole Areas/ tree;
+    # Ollama's own default can be far smaller and silently cuts the prompt.
+    # 0 leaves it to Ollama.
+    ollama_num_ctx: int = field(default_factory=lambda: _int("OLLAMA_NUM_CTX", 32768))
 
     # Page capture (SingleFile CLI driving the bundled Chromium)
     singlefile_bin: str = field(default_factory=lambda: _env("SINGLEFILE_BIN", "single-file"))

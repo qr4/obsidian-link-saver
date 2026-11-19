@@ -6,6 +6,7 @@ Dumps/ plus a tagged, summarized bullet in an Areas/ leaf note.
   - errors raise SaveError, which fails the job, not the service
 """
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -115,6 +116,18 @@ class Saver:
         written = replace_area_entry(area, tags, summary, source_line, prior_area_note, prior_area_entry)
         self.refresh_indexes()
         return written
+
+    def analyze_download(self, text, allow_thin, folder: Path, created: bool):
+        """analyze() for a video that is already downloaded. When the LLM
+        rejects it as content-free, a folder this save created is removed:
+        nothing would ever link to it, and it can hold gigabytes."""
+        try:
+            return self.analyze(text, allow_thin=allow_thin)
+        except ContentFreeError:
+            if created and folder.exists():
+                shutil.rmtree(folder, ignore_errors=True)
+                log(f"Removed the download, nothing links to it: {folder}")
+            raise
 
     @staticmethod
     def refresh_indexes():
@@ -364,6 +377,7 @@ class Saver:
         safe_channel = safe_segment(sanitize_filename(meta.get("uploader") or "unknown-channel")[:120])
         rel_dir = f"{safe_channel}/{safe_title} [{video_id}]"
         target_dir = blobs.media_work_dir("youtube", rel_dir)
+        created = not target_dir.exists()
 
         log(f"Downloading video + transcript into {target_dir} ...")
         video_file = None
@@ -377,10 +391,10 @@ class Saver:
 
         # Filed after the download, so the transcript (when there is one)
         # decides what the video is about, not just its description.
-        tags, summary, topic_area = self.analyze(
+        tags, summary, topic_area = self.analyze_download(
             video_text(f"Title: {title}\nChannel: {meta.get('uploader', '')}", meta.get("description", ""),
                        target_dir if video_file else None),
-            allow_thin=allow_thin)
+            allow_thin, target_dir, created)
 
         # No companion .md note - the folder of mkv + subtitles *is* the
         # artifact. Link the mkv; fall back to the URL if the download failed.
@@ -406,6 +420,7 @@ class Saver:
         safe_conf = safe_segment(sanitize_filename(meta["conference"] or "unknown-conference")[:120])
         rel_dir = f"{safe_conf}/{safe_title} [{talk_id}]"
         target_dir = blobs.media_work_dir("video", f"media.ccc.de/{rel_dir}")
+        created = not target_dir.exists()
 
         size_gb = meta["filesize"] / 1e9 if meta["filesize"] else 0
         log(f"Downloading talk + transcript into {target_dir} ({meta['duration'] // 60} min"
@@ -418,10 +433,10 @@ class Saver:
         except Exception as e:  # noqa: BLE001
             log(f"WARNING: talk download failed ({e}) - the Area entry links the source URL instead")
 
-        tags, summary, topic_area = self.analyze(
+        tags, summary, topic_area = self.analyze_download(
             video_text(f"Title: {title}\nSpeakers: {meta['speakers']}\nConference: {meta['conference']}",
                        meta["description"], target_dir if video_file else None),
-            allow_thin=allow_thin)
+            allow_thin, target_dir, created)
 
         if video_file:
             blobs.mirror_video("video", f"media.ccc.de/{rel_dir}", video_file)

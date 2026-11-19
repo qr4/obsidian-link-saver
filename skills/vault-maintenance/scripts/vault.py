@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import urllib.error
 import urllib.request
 from collections import defaultdict
@@ -163,6 +164,30 @@ def save_registry(new, old):
             patches.append({"key": key, "set": changed, "unset": removed})
     result = service_request("POST", "/api/registry/patch", patches) if patches else {"updated": 0}
     return f"save service updated: {result}"
+
+
+def write_if_changed(path, text) -> bool:
+    """Write a note only when its text differs, in one step: a temp dot file
+    renamed over it. Obsidian and LiveSync, watching the vault, see the old
+    note or the new one, never a half-written one, and untouched notes keep
+    their timestamps. Returns whether the note was written."""
+    path = Path(path)
+    try:
+        if path.read_text(encoding="utf-8") == text:
+            return False
+        mode = path.stat().st_mode & 0o7777
+    except FileNotFoundError:
+        mode = 0o644
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return True
 
 
 def is_folder_note(rel):

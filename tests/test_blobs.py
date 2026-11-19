@@ -470,3 +470,33 @@ def test_video_falls_back_to_metadata_when_the_download_fails(store, env, monkey
                         lambda self, text, **kw: analyzed.append(text) or (["x"], "s", "misc/x.md"))
     Saver().save("https://www.youtube.com/watch?v=abc123def45")
     assert analyzed == ["Title: Talk\nChannel: Chan\n\nDescription:\nabout things"]
+
+
+def test_rejected_video_download_is_removed(store, env, monkeypatch):
+    """A video the LLM judges content-free leaves no download behind; nothing
+    would ever link to it."""
+    from saver.errors import ContentFreeError
+    monkeypatch.setattr(media, "fetch_youtube_metadata", lambda url: {
+        "id": "abc123def45", "title": "Talk", "uploader": "Chan", "description": ""})
+    monkeypatch.setattr(media, "download_youtube_video", lambda url, target_dir: make_video_dir(target_dir))
+
+    def reject(self, text, allow_thin=False, require_content=True):
+        raise ContentFreeError("no real content")
+    monkeypatch.setattr(Saver, "analyze", reject)
+
+    with pytest.raises(ContentFreeError):
+        Saver().save("https://www.youtube.com/watch?v=abc123def45")
+    assert not (store / "youtube" / "Chan" / "Talk [abc123def45]").exists()
+
+
+def test_rejected_resave_keeps_an_existing_download(store, env, monkeypatch):
+    from saver.errors import ContentFreeError
+    monkeypatch.setattr(media, "fetch_youtube_metadata", lambda url: {
+        "id": "abc123def45", "title": "Talk", "uploader": "Chan", "description": ""})
+    folder = store / "youtube" / "Chan" / "Talk [abc123def45]"
+    make_video_dir(folder)  # saved before; a re-save is now rejected
+    monkeypatch.setattr(media, "download_youtube_video", lambda url, target_dir: target_dir / "Talk [abc123def45].mkv")
+    monkeypatch.setattr(Saver, "analyze", lambda self, text, **kw: (_ for _ in ()).throw(ContentFreeError("thin")))
+    with pytest.raises(ContentFreeError):
+        Saver().save("https://www.youtube.com/watch?v=abc123def45")
+    assert (folder / "Talk [abc123def45].mkv").exists()

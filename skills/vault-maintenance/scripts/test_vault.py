@@ -139,6 +139,24 @@ with migrate.Migration() as _m:
 # it the instant we let go. The handle being dropped is the deterministic part.
 check("window closed on exit", _m._lock, None)
 
+# ── flush() writes only changed notes, atomically ──────────────────────────
+# It used to rewrite all ~1500 notes in place with write_text: a stop mid-way
+# left a cut-off note for LiveSync to spread, and every timestamp changed.
+import os as _os
+import tempfile as _tempfile
+from vault import write_if_changed
+
+with _tempfile.TemporaryDirectory() as _tmp:
+    _note = Path(_tmp) / "note.md"
+    _note.write_text("- a\n", encoding="utf-8")
+    _os.utime(_note, (1, 1))
+    check("unchanged note is not written", write_if_changed(_note, "- a\n"), False)
+    check("unchanged note keeps its timestamp", _note.stat().st_mtime, 1)
+    check("changed note is written", write_if_changed(_note, "- b\n"), True)
+    check("changed note has the new text", _note.read_text(encoding="utf-8"), "- b\n")
+    check("no temp file left behind", sorted(p.name for p in Path(_tmp).iterdir()), ["note.md"])
+    check("a new note is created", write_if_changed(Path(_tmp) / "new.md", "- c\n"), True)
+
 if failures:
     print(f"FAILED {len(failures)}:")
     for f in failures:

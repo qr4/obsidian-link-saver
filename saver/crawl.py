@@ -21,6 +21,9 @@ from .util import write_text_atomic
 from .vaultlock import vault_lock
 
 FETCH_TIMEOUT = 30
+# A PDFs-only crawl visits HTML pages just to find PDF links; those don't
+# count toward max_pages, so they get their own cap of this many times it.
+LINK_ONLY_PAGES_FACTOR = 10
 CRAWLER_UA = "Mozilla/5.0 (compatible; obsidian-save-service crawler)"
 
 # The crawl is same-host only; these are hand-listed exceptions, applied
@@ -145,7 +148,7 @@ def run_crawl(seed_url: str, max_depth: int = 3, max_pages: int = 50, scope: str
     seed_parsed = urlparse(seed_url)
     seen = {seed_url}
     queue = deque([(seed_url, 0)])
-    queued = skipped = 0
+    queued = skipped = link_only = 0
     db = get_db()
     stage("Discovering pages")
 
@@ -156,6 +159,11 @@ def run_crawl(seed_url: str, max_depth: int = 3, max_pages: int = 50, scope: str
         # pdf_only: HTML pages are pure link-discovery hops toward the PDFs
         # they link to, never saved themselves.
         if pdf_only and not is_pdf_link(url):
+            if link_only >= LINK_ONLY_PAGES_FACTOR * max_pages:
+                log(f"Stopping: searched {link_only} pages for PDFs "
+                    f"(the limit is {LINK_ONLY_PAGES_FACTOR} x max pages)")
+                break
+            link_only += 1
             log(f"[depth {depth}] {url} (not a PDF, link discovery only)")
         elif not force and db.has_entry(dedupe_key(url) or ""):
             skipped += 1

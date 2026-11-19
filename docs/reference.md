@@ -210,6 +210,7 @@ it conflicts constantly.
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama server (required in the compose file) |
 | `OLLAMA_MODEL` | `qwen3.8:27b` | |
 | `OLLAMA_THINK` / `OLLAMA_TEMPERATURE` / `OLLAMA_TIMEOUT` | `false` / `0.2` / `180` | |
+| `OLLAMA_NUM_CTX` | `32768` | Context window per request, in tokens. Filing a link sends your whole `Areas/` tree (about 22,000 tokens at 1,500 notes); raise it for a bigger vault, `0` leaves it to Ollama |
 | `BLOB_DIR` | *(empty)* | Offsite store path inside the container (`/blobs`); empty keeps everything in the vault |
 | `PUBLIC_URL` | *(empty)* | How your devices reach the service, e.g. `https://saver.example.com`; required for the store. Written into note links |
 | `OFFLOAD_MIN_AGE` | `600` | Seconds a vault file must be untouched before the offload moves it |
