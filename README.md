@@ -18,6 +18,8 @@ everything the service writes reaches your desktop and phone within seconds.
 A [Claude Code](https://claude.com/claude-code) skill for auditing and
 restructuring the vault is included.
 
+![The dashboard after saving an essay, a GitHub repo, a YouTube video and a PDF](docs/screenshots/dashboard.png)
+
 > [!WARNING]
 > **This repository was implemented largely with AI.** Most of the code,
 > tests and documentation were written with an AI coding assistant
@@ -48,6 +50,18 @@ The vault layout it uses (created when missing):
   Dumps/                       captures: single_page/, pdf/, git/, youtube/, video/
   Dumps/singlefile_inbox/      drop SingleFile pages or PDFs here to import them
 ```
+
+## Screenshots
+
+All taken on a fresh [quick start](#quick-start-on-your-own-machine) after
+saving four links.
+
+| | |
+|---|---|
+| ![The Library tab listing the four saved links with their tags, summaries and notes](docs/screenshots/library.png) | ![A YouTube job's log: download, transcription, then tagging, summary and filing](docs/screenshots/job-log.png) |
+| **Library:** everything saved, searchable, with links to the note and the stored files | **Job log:** each stage of a save; videos are filed by their transcript |
+| ![The blob store's file browser showing a cloned repository and its README](docs/screenshots/repo-browser.png) | ![The video player with Whisper subtitles](docs/screenshots/watch.jpg) |
+| **Stored repositories:** the full clone lives outside the vault, browsable | **Video player:** stored videos play in the browser with Whisper subtitles |
 
 ## Quick start (on your own machine)
 
@@ -387,6 +401,7 @@ provides the GPU, and shares are owned by `nobody:users` (`PUID=99`,
 | `tests/` | `pytest` suite for the service |
 | `docs/reference.md` | Blob store, folder indexes, LiveSync details, all settings, API, development |
 | `docs/architecture.py` | Generates the diagram (`python3 docs/architecture.py docs`) |
+| `docs/screenshots/` | The screenshots above, from a fresh quick start |
 
 ## License
 
