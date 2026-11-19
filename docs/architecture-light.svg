@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="660" viewBox="0 0 1120 660" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
 <title id="t">How obsidian-link-saver fits together</title>
-<desc id="d">Obsidian on your devices syncs through the LiveSync plugin with CouchDB behind a reverse proxy. The livesync-bridge keeps CouchDB and the vault copy on the server in sync. The saver service, reached through the proxy by the web UI, bookmarklet and obsidian-save client, writes notes into the vault copy, stores videos and git clones in the blob store, fetches content from the web, and asks Ollama to tag, summarize and file each link. SingleFile in the browser, with its Companion, saves pages into the desktop vault's inbox folder, which the saver imports. Claude Code edits the notes in the desktop vault and calls the saver API for the registry, vault lock and folder indexes.</desc>
+<desc id="d">Obsidian on your devices syncs through the LiveSync plugin with CouchDB behind a reverse proxy. The livesync-bridge keeps CouchDB and the vault copy on the server in sync. The saver service, reached through the proxy by the web UI, bookmarklet and obsidian-save client, writes notes into the vault copy, stores videos and git clones in the blob store, fetches content from the web, and asks Ollama to tag, summarize and file each link. SingleFile in the browser, with its Companion, saves pages into the desktop vault's inbox folder; LiveSync carries them to the vault copy, where the saver watches the inbox and imports them. Claude Code edits the notes in the desktop vault and calls the saver API for the registry, vault lock and folder indexes.</desc>
 <defs>
 <marker id="a-sync" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0f7b6c"/></marker>
 <marker id="a-save" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0969da"/></marker>
@@ -93,6 +93,8 @@
 <path d="M600,360 L700,360" fill="none" stroke="#9a6700" stroke-width="2" marker-end="url(#a-store)"/>
 <text x="650" y="336" font-size="12" font-weight="600" fill="#9a6700" text-anchor="middle">notes,</text>
 <text x="650" y="351" font-size="12" font-weight="600" fill="#9a6700" text-anchor="middle">transcripts</text>
+<path d="M700,392 L600,392" fill="none" stroke="#9a6700" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#a-store)"/>
+<text x="650" y="410" font-size="12" font-weight="600" fill="#9a6700" text-anchor="middle">watches inbox</text>
 <path d="M580,440 L580,497 L700,497" fill="none" stroke="#9a6700" stroke-width="2" marker-end="url(#a-store)"/>
 <text x="592" y="489" font-size="12" font-weight="600" fill="#9a6700" text-anchor="start">bulky files</text>
 <path d="M600,430 L930,430" fill="none" stroke="#8250df" stroke-width="2" marker-end="url(#a-ext)"/>

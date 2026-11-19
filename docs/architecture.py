@@ -80,7 +80,8 @@ def svg(theme):
         'reached through the proxy by the web UI, bookmarklet and obsidian-save client, '
         'writes notes into the vault copy, stores videos and git clones in the blob store, fetches content '
         'from the web, and asks Ollama to tag, summarize and file each link. SingleFile in the browser, with its '
-        'Companion, saves pages into the desktop vault\'s inbox folder, which the saver imports. '
+        'Companion, saves pages into the desktop vault\'s inbox folder; LiveSync carries them to the vault copy, '
+        'where the saver watches the inbox and imports them. '
         'Claude Code edits the notes in the '
         'desktop vault and calls the saver API for the registry, vault lock and folder indexes.</desc>')
     add("<defs>")
@@ -151,6 +152,8 @@ def svg(theme):
 
     # --- edges: storage ---
     edge([(600, 360), (700, 360)], "store", label="notes,\ntranscripts", label_at=(650, 336))
+    # the inbox watcher: SingleFile captures synced into Dumps/singlefile_inbox
+    edge([(700, 392), (600, 392)], "store", dashed=True, label="watches inbox", label_at=(650, 410))
     edge([(580, 440), (580, 497), (700, 497)], "store", label="bulky files", label_at=(592, 489),
          label_anchor="start")
 
