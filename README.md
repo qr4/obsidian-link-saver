@@ -56,6 +56,13 @@ bridge keeps that copy and CouchDB in sync, and the LiveSync plugin syncs
 CouchDB with every device. Without the bridge, nothing the service writes
 would reach your devices.
 
+**How a link becomes a note:** for every save, the LLM is asked three
+questions: which tags fit, what the summary is (and whether the page has
+real content at all), and which note under `Areas/` it belongs in.
+[How the LLM integration works](docs/llm.md) explains each step, what text
+the model sees, how its answers are checked, and the limits, with links into
+the code.
+
 The vault layout it uses (created when missing):
 
 ```
