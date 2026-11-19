@@ -36,8 +36,11 @@ restructuring the vault is included.
 > upload files into your vault, change settings. Even with a token set, the
 > blob store isn't protected: `/blobs`, `/watch` and `/subs` (your stored
 > videos, cloned repos and subtitles) stay open, because notes link to
-> them directly. Keep the service on your LAN or behind a VPN, and set
-> `API_TOKEN` (see [Configure](#5-configure)).
+> them directly. Don't expose it to the internet as it is: put it behind a
+> reverse proxy that handles authentication, or keep it on a private
+> network such as [Tailscale](https://tailscale.com) (see
+> [step 4](#4-set-up-the-reverse-proxy)). Either way, set `API_TOKEN` (see
+> [Configure](#5-configure)).
 
 ## How it fits together
 
@@ -200,7 +203,24 @@ services:
 
 The `/blobs` and `/watch` routes (videos, repo files) have no login, because
 notes link to them directly. Keep `saver.example.com` on your LAN, or
-restrict it at the proxy.
+have the proxy handle authentication.
+
+**Not exposing it at all:** [Tailscale](https://tailscale.com) is a valid
+alternative to a reverse proxy. With Tailscale on the server and your
+devices, both services are reachable only inside your tailnet (your private
+Tailscale network), and nothing is open to the internet.
+[`tailscale serve`](https://tailscale.com/kb/1312/serve) provides the HTTPS
+(a `*.ts.net` certificate) that the Obsidian mobile app needs, for example:
+
+```sh
+tailscale serve --bg --https=443 http://127.0.0.1:8765     # the web UI and API
+tailscale serve --bg --https=8443 http://127.0.0.1:5984    # CouchDB (publish it on loopback, above)
+```
+
+Then set `PUBLIC_URL=https://<server>.<tailnet>.ts.net` and
+`LIVESYNC_PUBLIC_URL=https://<server>.<tailnet>.ts.net:8443`. The proxy
+network must still exist (`docker network create proxy`), even though
+nothing else joins it.
 
 ### 5. Configure
 
