@@ -77,9 +77,10 @@ def svg(theme):
     add('<title id="t">How obsidian-link-saver fits together</title>')
     add('<desc id="d">Obsidian on your devices syncs through the LiveSync plugin with CouchDB behind a reverse '
         'proxy. The livesync-bridge keeps CouchDB and the vault copy on the server in sync. The saver service, '
-        'reached through the proxy by the web UI, bookmarklet, obsidian-save client and Claude Code skill, '
+        'reached through the proxy by the web UI, bookmarklet and obsidian-save client, '
         'writes notes into the vault copy, stores videos and git clones in the blob store, fetches content '
-        'from the web, and asks Ollama to tag, summarize and file each link.</desc>')
+        'from the web, and asks Ollama to tag, summarize and file each link. Claude Code edits the notes in the '
+        'desktop vault and calls the saver API for the registry, vault lock and folder indexes.</desc>')
     add("<defs>")
     for kind in ("sync", "save", "store", "ext"):
         add(f'<marker id="a-{kind}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
@@ -93,19 +94,24 @@ def svg(theme):
     text(W / 2, 34, "How obsidian-link-saver fits together", size=18, weight="700")
 
     # --- devices ---
-    for y, device in ((100, "desktop"), (160, "laptop"), (220, "phone")):
-        box(40, y, 180, 50, "Obsidian", (device,), accent=c["sync"], fill=c["sync_bg"])
-    text(130, 292, "each with the LiveSync plugin", size=11, color=c["sync"], weight="600")
-    box(40, 330, 180, 70, "Browser", ("web UI · bookmarklet",), accent=c["save"], fill=c["save_bg"])
-    box(40, 420, 180, 60, "obsidian-save", ("CLI & keybinding",))
-    box(40, 500, 180, 70, "Claude Code", ("vault-maintenance skill",), dashed=True)
+    for y, device in ((100, "laptop"), (160, "phone"), (220, "desktop")):
+        box(40, y, 180, 50, "Obsidian", (f"{device} · LiveSync plugin",), accent=c["sync"], fill=c["sync_bg"])
+    box(40, 292, 180, 54, "Claude Code", ("vault-maintenance skill",), dashed=True)
+    box(40, 365, 180, 50, "Browser", ("web UI · bookmarklet",), accent=c["save"], fill=c["save_bg"])
+    box(40, 430, 180, 50, "obsidian-save", ("CLI & keybinding",))
+    for i, line in enumerate(("Claude Code edits the notes in the",
+                              "desktop's vault; LiveSync carries the",
+                              "changes. It calls the saver's API for",
+                              "the registry, the vault lock and the",
+                              "folder indexes.")):
+        text(40, 520 + i * 16, line, size=11, color=c["muted"], anchor="start")
 
     # --- proxy ---
     pill(274, 132, 112, 36, "sync.example", c["sync"])
-    pill(274, 352, 112, 36, "saver.example", c["save"])
+    pill(274, 372, 112, 36, "saver.example", c["save"])
     text(330, 190, "HTTPS", size=11, color=c["muted"])
     text(330, 205, "end-to-end encrypted", size=11, color=c["sync"], weight="600")
-    text(330, 416, "HTTPS", size=11, color=c["muted"])
+    text(330, 436, "HTTPS", size=11, color=c["muted"])
 
     # --- stack ---
     box(440, 105, 160, 90, "CouchDB", ("LiveSync database",), accent=c["sync"], fill=c["sync_bg"])
@@ -129,10 +135,11 @@ def svg(theme):
     edge([(785, 195), (785, 310)], "sync", both=True, label="keeps in sync", label_at=(795, 257), label_anchor="start")
 
     # --- edges: saving ---
-    edge([(220, 370), (274, 370)], "save")
-    edge([(220, 450), (250, 450), (250, 370)], "save", arrow=False)
-    edge([(220, 535), (250, 535), (250, 450)], "save", dashed=True, arrow=False)
-    edge([(386, 370), (440, 370)], "save")
+    edge([(220, 390), (274, 390)], "save")
+    edge([(220, 455), (250, 455), (250, 390)], "save", arrow=False)
+    edge([(220, 319), (250, 319), (250, 390)], "save", dashed=True, arrow=False)
+    edge([(386, 390), (440, 390)], "save")
+    edge([(130, 292), (130, 270)], "store", label="edits notes", label_at=(140, 286), label_anchor="start")
 
     # --- edges: storage ---
     edge([(600, 360), (700, 360)], "store", label="notes,\ntranscripts", label_at=(650, 336))
