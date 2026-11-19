@@ -121,7 +121,9 @@ Notes:
 
 ## Bootstrap
 
-This walks through a fresh install on a server. Commands use example paths under
+This walks through a fresh install on a server, with LiveSync. Already
+syncing your vault another way? See
+[Without LiveSync](#without-livesync-an-existing-obsidian-setup). Commands use example paths under
 `/srv/obsidian`; put the folders wherever suits your server. On Unraid, see
 [Running on Unraid](#running-on-unraid) as you go.
 
@@ -373,6 +375,59 @@ the vault. The scripts find the vault from the working directory (or
 `OBSIDIAN_VAULT`) and the service from the same `client.env` as the client.
 To have the skill only in that vault, link it into `<vault>/.claude/skills/`
 instead. A symlink, rather than a copy, keeps it updated with `git pull`.
+
+## Without LiveSync (an existing Obsidian setup)
+
+LiveSync is optional. If your vault already syncs some other way, or the
+service runs on the machine where the vault lives, run only the `saver`
+service: it reads and writes a plain folder and doesn't care how that
+folder is synced. Skip steps 7 and 8 of the bootstrap.
+
+**Where the vault comes from.** `VAULT_DIR` must be a folder that your
+devices see:
+
+- **The service runs on the same machine as your vault:** point
+  `VAULT_DIR` at the vault itself, and set `PUID`/`PGID` to your own user
+  (`id -u`, `id -g`). Obsidian sees each new note as soon as it's written.
+- **The service runs on a server:** keep a copy of the vault there with
+  your sync tool (Syncthing, Nextcloud, Resilio Sync, ...), syncing both
+  ways, since the service writes notes and the inbox is filled from your
+  devices. Set `PUID`/`PGID` to the user your sync tool runs as, so it can
+  sync what the service writes.
+
+**Setup.** Follow bootstrap steps 1 to 6, with these changes:
+
+1. In `.env`, fill the LiveSync variables (`COUCHDB_PASSWORD`,
+   `LIVESYNC_PASSPHRASE`, `LIVESYNC_ID_KEY`, `LIVESYNC_PUBLIC_URL`) with any
+   placeholder such as `unused`: Compose checks the whole file, even for
+   services that never start. You only need the one hostname for the
+   service, not one for CouchDB.
+2. Next to `docker-compose.yml`, create `docker-compose.override.yml`
+   (git-ignored), which keeps the LiveSync services from starting, also
+   when `deploy/update.sh` restarts the stack:
+   ```yaml
+   services:
+     couchdb: {profiles: [livesync]}
+     livesync-init: {profiles: [livesync]}
+     livesync-bridge: {profiles: [livesync]}
+   ```
+3. `docker compose up -d --build` now starts only `saver`. It still joins
+   the proxy network, so that network must exist
+   (`docker network create proxy`).
+
+**Things to know:**
+
+- Turn off the **Waypoint** plugin on every device; the service writes the
+  folder indexes (`MANAGE_WAYPOINTS`), and two writers cause conflicts.
+- Keep `.obsidian/workspace.json` and `.obsidian/workspace-mobile.json`
+  (each device's window layout) out of your sync tool, or they conflict
+  constantly.
+- Never put `BLOBS_DIR` or `DATA_DIR` inside the synced vault: the blob
+  store would be synced back to every device, and syncing a live SQLite
+  database corrupts it.
+- The inbox (`Dumps/singlefile_inbox`) works with any sync tool: the
+  service only picks up names ending in `.html` or `.pdf` (so sync tools'
+  temporary files are skipped) that haven't changed for a few seconds.
 
 ## Updating
 

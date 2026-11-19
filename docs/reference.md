@@ -188,12 +188,10 @@ docker start obsidian-livesync-bridge
 
 ### Without LiveSync
 
-The service runs fine on its own against a vault that another tool (e.g.
-Syncthing) keeps in sync on the server: start only it with
-`docker compose up -d --build saver`. Compose still checks the whole file,
-so give the LiveSync variables in `.env` any non-empty value. Keep the sync
-tool from syncing `.obsidian/workspace*.json` (per-device window layout), or
-it conflicts constantly.
+The service runs fine on its own, against a vault on the same machine or
+one another tool keeps in sync. The README's
+[Without LiveSync](../README.md#without-livesync-an-existing-obsidian-setup)
+section describes the setup.
 
 ## Volumes
 
