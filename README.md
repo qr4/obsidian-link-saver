@@ -223,9 +223,8 @@ No NVIDIA GPU? Delete the `deploy:` block under `saver` in
 `docker-compose.yml`, and consider `WHISPER_MODEL=small` or `medium`.
 
 Check the result: `docker compose config -q` prints nothing when every
-required value is set, and names the missing one otherwise.
-[`.env.unraid.example`](.env.unraid.example) is a complete, filled-in
-example. All other settings are listed in
+required value is set, and names the missing one otherwise. All other
+settings are listed in
 [docs/reference.md](docs/reference.md#configuration-environment-variables).
 
 ### 6. Start the stack
@@ -379,10 +378,11 @@ provides the GPU, and shares are owned by `nobody:users` (`PUID=99`,
 - Compose Manager runs its own copy of `docker-compose.yml` from its
   project folder on the flash drive
   (`/boot/config/plugins/compose.manager/projects/<name>/`). Paste the file
-  there, and create the project's `.env` from
-  [`.env.unraid.example`](.env.unraid.example). It sets `STACK_DIR` (the
-  clone, which the images are built from) and `DATA_DIR`; without them,
-  paths would resolve on the flash drive.
+  there, and create the project's `.env` from `.env.example`. Set
+  `STACK_DIR` to the clone (the images are built from it) and `DATA_DIR`
+  to the data folder; without them, paths would resolve on the flash
+  drive. Shares live under `/mnt/user/`, e.g.
+  `VAULT_DIR=/mnt/user/obsidian` and `BLOBS_DIR=/mnt/user/obsidian_blobs`.
 - Update with
   `deploy/update.sh --project-dir /boot/config/plugins/compose.manager/projects/<name>`.
   It also copies a changed `docker-compose.yml` into the project folder.
@@ -391,7 +391,7 @@ provides the GPU, and shares are owned by `nobody:users` (`PUID=99`,
 
 | Path | |
 |---|---|
-| `docker-compose.yml`, `.env.example`, `.env.unraid.example` | The stack and its configuration |
+| `docker-compose.yml`, `.env.example` | The stack and its configuration |
 | `docker-compose.quickstart.yml` | The service alone, for trying it on your own machine |
 | `Dockerfile`, `docker/`, `saver/`, `pyproject.toml` | The save service (FastAPI, SQLite, workers, web UI) |
 | `livesync/` | The livesync-bridge image and its startup script |
