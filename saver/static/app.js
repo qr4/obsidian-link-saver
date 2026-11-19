@@ -383,6 +383,7 @@ function buildJob(job) {
         el("div", { class: "job-meta" })),
       el("span", { class: "badge" }),
       el("span", { class: "time" }),
+      el("button", { class: "icon-btn library-link", title: "Show this entry in the library", hidden: true }, "Library"),
       el("button", { class: "icon-btn action" })),
     el("div", { class: "progress" }, el("span")),
     el("ul", { class: "children", hidden: true }),
@@ -392,7 +393,18 @@ function buildJob(job) {
     const action = event.currentTarget.dataset.action;
     jobAction(li.dataset.id, action);
   });
+  li.querySelector(".library-link").addEventListener("click", (event) => {
+    event.stopPropagation();
+    openInLibrary(li.dataset.url);
+  });
   return li;
+}
+
+// Switch to the Library tab, searching for one saved link.
+function openInLibrary(url) {
+  $("#lib-q").value = url;
+  $("#lib-kind").value = "";
+  document.querySelector('.tab[data-tab="library"]').click();
 }
 
 function updateJob(li, job) {
@@ -413,6 +425,9 @@ function updateJob(li, job) {
   li.querySelector(".time").textContent = active
     ? (job.status === "running" ? duration(job.started_at) : ago(job.created_at))
     : ago(job.finished_at);
+  // Saved links have a library entry (a crawl's pages are listed one by one)
+  li.dataset.url = job.url || "";
+  li.querySelector(".library-link").hidden = !(job.type === "save" && job.status === "done" && job.url);
   const action = li.querySelector(".action");
   const [name, label, title] = jobActionFor(job, active);
   action.hidden = !name;

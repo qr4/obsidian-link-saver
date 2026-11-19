@@ -77,7 +77,6 @@ h2 { font-size: 13px; font-weight: 600; letter-spacing: .02em; text-transform: u
 .tab.active { color: var(--text); background: var(--surface); box-shadow: var(--shadow); }
 .nav-link { color: var(--muted); font-weight: 550; padding: 6px 12px; margin-left: -20px; border-radius: 8px; text-decoration: none; }
 .nav-link:hover { color: var(--text); background: var(--surface-2); }
-.nav-link[hidden] { display: none; }
 .status { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
 .pill {
