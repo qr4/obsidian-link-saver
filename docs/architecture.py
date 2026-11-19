@@ -79,7 +79,9 @@ def svg(theme):
         'proxy. The livesync-bridge keeps CouchDB and the vault copy on the server in sync. The saver service, '
         'reached through the proxy by the web UI, bookmarklet and obsidian-save client, '
         'writes notes into the vault copy, stores videos and git clones in the blob store, fetches content '
-        'from the web, and asks Ollama to tag, summarize and file each link. Claude Code edits the notes in the '
+        'from the web, and asks Ollama to tag, summarize and file each link. SingleFile in the browser, with its '
+        'Companion, saves pages into the desktop vault\'s inbox folder, which the saver imports. '
+        'Claude Code edits the notes in the '
         'desktop vault and calls the saver API for the registry, vault lock and folder indexes.</desc>')
     add("<defs>")
     for kind in ("sync", "save", "store", "ext"):
@@ -97,14 +99,17 @@ def svg(theme):
     for y, device in ((100, "laptop"), (160, "phone"), (220, "desktop")):
         box(40, y, 180, 50, "Obsidian", (f"{device} · LiveSync plugin",), accent=c["sync"], fill=c["sync_bg"])
     box(40, 292, 180, 54, "Claude Code", ("vault-maintenance skill",), dashed=True)
-    box(40, 365, 180, 50, "Browser", ("web UI · bookmarklet",), accent=c["save"], fill=c["save_bg"])
-    box(40, 430, 180, 50, "obsidian-save", ("CLI & keybinding",))
-    for i, line in enumerate(("Claude Code edits the notes in the",
-                              "desktop's vault; LiveSync carries the",
-                              "changes. It calls the saver's API for",
-                              "the registry, the vault lock and the",
-                              "folder indexes.")):
-        text(40, 520 + i * 16, line, size=11, color=c["muted"], anchor="start")
+    box(40, 362, 180, 66, "Browser", ("web UI · bookmarklet", "SingleFile (+ Companion)"),
+        accent=c["save"], fill=c["save_bg"])
+    box(40, 445, 180, 50, "obsidian-save", ("CLI & keybinding",))
+    for i, line in enumerate(("Claude Code edits the desktop",
+                              "vault and uses the saver's API.",
+                              "SingleFile with its Companion",
+                              "saves pages into the vault's",
+                              "inbox folder for the saver to",
+                              "import; without it, drop the",
+                              "file onto the web UI.")):
+        text(40, 522 + i * 15, line, size=11, color=c["muted"], anchor="start")
 
     # --- proxy ---
     pill(274, 132, 112, 36, "sync.example", c["sync"])
@@ -116,7 +121,8 @@ def svg(theme):
     # --- stack ---
     box(440, 105, 160, 90, "CouchDB", ("LiveSync database",), accent=c["sync"], fill=c["sync_bg"])
     box(700, 105, 170, 90, "livesync-bridge", ("files ⇄ CouchDB", "documents"), accent=c["sync"], fill=c["sync_bg"])
-    box(440, 320, 160, 120, "saver", ("web UI · API · workers", "Whisper · SQLite", "serves /watch, /blobs"),
+    box(440, 320, 160, 120, "saver", ("web UI · API · workers", "Whisper · SQLite", "imports the inbox",
+                                       "serves /watch, /blobs"),
         accent=c["save"], fill=c["save_bg"])
     cylinder(700, 310, 170, 100, "Vault copy", ("Areas/ · Dumps/",))
     cylinder(700, 450, 170, 95, "Blob store", ("videos · git clones",))
@@ -136,7 +142,9 @@ def svg(theme):
 
     # --- edges: saving ---
     edge([(220, 390), (274, 390)], "save")
-    edge([(220, 455), (250, 455), (250, 390)], "save", arrow=False)
+    edge([(220, 470), (250, 470), (250, 390)], "save", arrow=False)
+    # SingleFile Companion: page captures land in the desktop vault's inbox
+    edge([(40, 410), (30, 410), (30, 245), (40, 245)], "store", dashed=True)
     edge([(220, 319), (250, 319), (250, 390)], "save", dashed=True, arrow=False)
     edge([(386, 390), (440, 390)], "save")
     edge([(130, 292), (130, 270)], "store", label="edits notes", label_at=(140, 286), label_anchor="start")
