@@ -390,4 +390,4 @@ provides the GPU, and shares are owned by `nobody:users` (`PUID=99`,
 
 ## License
 
-Public domain ([The Unlicense](LICENSE)): do whatever you want with it.
+[MIT](LICENSE).

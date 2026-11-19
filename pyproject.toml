@@ -1,5 +1,5 @@
 [project]
-license = "Unlicense"
+license = "MIT"
 name = "obsidian-save-service"
 version = "2.0.0"
 description = "Web service that saves links into an Obsidian vault: capture, tag, summarize, file into Areas/"
