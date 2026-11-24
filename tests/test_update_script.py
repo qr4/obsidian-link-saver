@@ -11,11 +11,16 @@ import pytest
 SCRIPT = Path(__file__).resolve().parents[1] / "deploy" / "update.sh"
 
 FAKE_DOCKER = """#!/bin/sh
+if [ "$1" = inspect ]; then
+  [ -n "$RUNNING_FROM" ] || exit 1
+  echo "$RUNNING_FROM"
+  exit 0
+fi
 if [ "$1 $2" = "compose config" ] && [ "$3" != "-q" ]; then
   for c in $CONTEXTS; do echo "      context: $c"; done
   exit 0
 fi
-echo "docker $*" >> "$CALLS"
+echo "docker $* in $PWD" >> "$CALLS"
 """
 
 
@@ -37,11 +42,11 @@ def clone(tmp_path):
     return repo, bin_dir, tmp_path / "calls"
 
 
-def run(clone, contexts):
+def run(clone, contexts, running_from="", args=()):
     repo, bin_dir, calls = clone
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "CALLS": str(calls),
-           "CONTEXTS": " ".join(contexts)}
-    return subprocess.run(["bash", str(repo / "deploy" / "update.sh"), "--rebuild", "-y"],
+           "CONTEXTS": " ".join(contexts), "RUNNING_FROM": str(running_from)}
+    return subprocess.run(["bash", str(repo / "deploy" / "update.sh"), "--rebuild", "-y", *args],
                           cwd=repo, env=env, capture_output=True, text=True)
 
 
@@ -50,6 +55,41 @@ def test_builds_when_the_clone_is_one_of_the_contexts(clone):
     result = run(clone, [f"{repo}/livesync", str(repo)])
     assert result.returncode == 0, result.stderr
     assert "docker compose up -d" in clone[2].read_text()
+
+
+def project_folder(clone, name="project"):
+    project = clone[0].parent / name
+    project.mkdir()
+    for folder in (clone[0], project):
+        (folder / "docker-compose.yml").write_text("services: {}\n")
+    return project
+
+
+def test_uses_the_folder_the_running_stack_started_from(clone):
+    repo = clone[0]
+    project = project_folder(clone)
+    result = run(clone, [f"{repo}/livesync", str(repo)], running_from=project)
+    assert result.returncode == 0, result.stderr
+    assert f"docker compose up -d in {project}" in clone[2].read_text()
+
+
+def test_project_dir_overrides_the_running_stack(clone):
+    repo = clone[0]
+    running = project_folder(clone, "running")
+    chosen = repo.parent / "chosen"
+    chosen.mkdir()
+    (chosen / "docker-compose.yml").write_text("services: {}\n")
+    result = run(clone, [f"{repo}/livesync", str(repo)], running_from=running,
+                 args=["--project-dir", str(chosen)])
+    assert result.returncode == 0, result.stderr
+    assert f"docker compose up -d in {chosen}" in clone[2].read_text()
+
+
+def test_falls_back_to_the_clone_when_the_recorded_folder_is_gone(clone):
+    repo = clone[0]
+    result = run(clone, [f"{repo}/livesync", str(repo)], running_from=repo.parent / "gone")
+    assert result.returncode == 0, result.stderr
+    assert f"docker compose up -d in {repo}" in clone[2].read_text()
 
 
 def test_refuses_when_stack_dir_points_elsewhere(clone):

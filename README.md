@@ -484,9 +484,10 @@ provides the GPU, and shares are owned by `nobody:users` (`PUID=99`,
   to the data folder; without them, paths would resolve on the flash
   drive. Shares live under `/mnt/user/`, e.g.
   `VAULT_DIR=/mnt/user/obsidian` and `BLOBS_DIR=/mnt/user/obsidian_blobs`.
-- Update with
-  `deploy/update.sh --project-dir /boot/config/plugins/compose.manager/projects/<name>`.
-  It also copies a changed `docker-compose.yml` into the project folder.
+- Update with `deploy/update.sh`. It finds the project folder from the
+  `obsidian-saver` container and copies a changed `docker-compose.yml` into
+  it. If the container has been removed, pass
+  `--project-dir /boot/config/plugins/compose.manager/projects/<name>`.
 
 ## Repository layout
 

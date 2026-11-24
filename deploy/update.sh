@@ -7,7 +7,9 @@
 #   --project-dir DIR  the folder Compose runs from: it holds .env and, for a
 #                      stack manager such as Unraid's Compose Manager, its own
 #                      copy of docker-compose.yml (plus an override file).
-#                      Default: the clone itself.
+#                      Default: the folder the obsidian-saver container was
+#                      started from, or the clone if that container doesn't
+#                      exist.
 #   --rebuild          skip git; only sync the compose file, build and restart
 #                      (e.g. after rolling back to an earlier commit)
 #   -y, --yes          don't ask before each step
@@ -20,7 +22,7 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-project="$here"
+project=""
 rebuild=0
 yes=0
 while [ $# -gt 0 ]; do
@@ -38,6 +40,17 @@ confirm() {
     read -r -p "$1 [y/N] " answer
     case "$answer" in [yY]|[yY][eE][sS]) return 0 ;; *) echo "Stopped."; exit 1 ;; esac
 }
+
+if [ -z "$project" ]; then
+    started_from="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' \
+        obsidian-saver 2>/dev/null || true)"
+    if [ -d "$started_from" ]; then
+        project="$(cd "$started_from" && pwd)"
+    else
+        project="$here"
+    fi
+    [ "$project" = "$here" ] || echo "Compose project folder: $project (from the obsidian-saver container)"
+fi
 
 cd "$here"
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
