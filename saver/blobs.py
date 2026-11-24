@@ -250,9 +250,47 @@ def _repo_roots(base: Path):
                     yield repo
 
 
+def _fast_forward(root: Path):
+    """Fast-forward a clone to its upstream. Returns an error message or None.
+
+    Mode differences are ignored: a store on SMB/NFS often can't keep the
+    executable bit, which makes every script look modified. Other edits to
+    tracked files that block the update go to `git stash`, so they stay
+    recoverable. Untracked files are left alone."""
+    def git(*args, timeout=60):
+        return _git("-C", str(root), "-c", "core.fileMode=false",
+                    "-c", "user.name=obsidian-link-saver", "-c", "user.email=saver@localhost",  # for the stash commit
+                    *args, timeout=timeout)
+
+    def error(failed):
+        return (failed.stderr or failed.stdout).strip()[-300:]
+
+    fetched = git("fetch", "--quiet", timeout=300)
+    if fetched.returncode != 0:
+        return error(fetched)
+    if git("merge-base", "--is-ancestor", "@{u}", "HEAD").returncode == 0:
+        return None  # already up to date: local changes aren't in the way
+    merged = git("merge", "--ff-only", "--quiet", "@{u}", timeout=300)
+    if merged.returncode == 0:
+        return None
+    can_fast_forward = git("merge-base", "--is-ancestor", "HEAD", "@{u}").returncode == 0
+    dirty = git("status", "--porcelain", "--untracked-files=no").stdout.strip()
+    if not (can_fast_forward and dirty):
+        return error(merged)
+    stashed = git("stash", "push", "--quiet", "-m", "Local changes set aside by Update repos")
+    if stashed.returncode != 0:
+        return error(stashed)
+    merged = git("merge", "--ff-only", "--quiet", "@{u}", timeout=300)
+    if merged.returncode != 0:
+        git("stash", "pop", "--quiet")
+        return error(merged)
+    log(f"{'/'.join(root.parts[-3:])}: local changes kept in git stash")
+    return None
+
+
 def update_repos():
-    """git pull every clone (store and any still in the vault) and refresh
-    the in-vault README copies."""
+    """Fast-forward every clone (store and any still in the vault) and
+    refresh the in-vault README copies."""
     roots = list(_repo_roots(store_root() / "git")) if enabled() else []
     roots += list(_repo_roots(settings.git_dir))
     stage(f"Pulling {len(roots)} repositories")
@@ -262,10 +300,10 @@ def update_repos():
         name = "/".join(root.parts[-3:])
         progress((i - 1) / max(len(roots), 1), f"{i}/{len(roots)} {name}")
         before = _git("-C", str(root), "rev-parse", "HEAD", timeout=30).stdout.strip()
-        pulled = _git("-C", str(root), "pull", "--ff-only", "--quiet", timeout=300)
-        if pulled.returncode != 0:
+        failure = _fast_forward(root)
+        if failure is not None:
             failed += 1
-            log(f"FAILED {name}: {pulled.stderr.strip()[-300:]}")
+            log(f"FAILED {name}: {failure}")
             continue
         after = _git("-C", str(root), "rev-parse", "HEAD", timeout=30).stdout.strip()
         if before != after:

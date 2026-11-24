@@ -351,6 +351,61 @@ def test_update_repos_pulls_and_refreshes_readme(store, env, tmp_path):
     assert (env["vault"] / "Dumps" / "git" / "example.org" / "me" / "proj" / "README.md").read_text() == "v2\n"
 
 
+def _clone_with_update(store, tmp_path):
+    """A stored clone whose upstream has one new commit touching run.sh."""
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    git("init", "-q", "-b", "main", cwd=upstream)
+    (upstream / "README.md").write_text("v1\n")
+    (upstream / "run.sh").write_text("echo v1\n")
+    os.chmod(upstream / "run.sh", 0o755)
+    git("add", ".", cwd=upstream)
+    git("commit", "-q", "-m", "v1", cwd=upstream)
+    clone = store / "git" / "example.org" / "me" / "proj"
+    clone.parent.mkdir(parents=True)
+    git("clone", "-q", "--depth", "1", f"file://{upstream}", str(clone))
+    (upstream / "run.sh").write_text("echo v2\n")
+    git("commit", "-q", "-am", "v2", cwd=upstream)
+    return upstream, clone
+
+
+def _stashes(clone):
+    return subprocess.run(["git", "-C", str(clone), "stash", "list"],
+                          capture_output=True, text=True, check=True).stdout
+
+
+def test_update_repos_ignores_mode_only_changes(store, env, tmp_path):
+    _, clone = _clone_with_update(store, tmp_path)
+    os.chmod(clone / "run.sh", 0o644)  # what a store without the x bit does
+
+    blobs.update_repos()
+    assert (clone / "run.sh").read_text() == "echo v2\n"
+    assert _stashes(clone) == ""
+
+
+def test_update_repos_stashes_blocking_edits(store, env, tmp_path):
+    _, clone = _clone_with_update(store, tmp_path)
+    (clone / "run.sh").write_text("echo mine\n")
+    (clone / "notes.txt").write_text("untracked\n")
+
+    blobs.update_repos()
+    assert (clone / "run.sh").read_text() == "echo v2\n"
+    assert (clone / "notes.txt").read_text() == "untracked\n"
+    shown = subprocess.run(["git", "-C", str(clone), "stash", "show", "-p"],
+                           capture_output=True, text=True, check=True).stdout
+    assert "+echo mine" in shown
+
+
+def test_update_repos_leaves_edits_alone_without_update(store, env, tmp_path):
+    _, clone = _clone_with_update(store, tmp_path)
+    blobs.update_repos()
+    (clone / "run.sh").write_text("echo mine\n")
+
+    blobs.update_repos()
+    assert (clone / "run.sh").read_text() == "echo mine\n"
+    assert _stashes(clone) == ""
+
+
 def test_store_inside_vault_is_refused(env):
     settings.update(blob_dir=str(env["vault"] / "Blobs"), public_url=PUBLIC)
     try:

@@ -56,8 +56,10 @@ Area notes then link like this:
   from Obsidian. Keep the hostname on your LAN, or restrict it at the proxy.
   Stored files are served with `Content-Security-Policy: sandbox`, so HTML
   from a cloned repo can't script against the API.
-- **Updating repos:** *Storage → Update repos* runs `git pull --ff-only` on
-  every clone and refreshes the README copies in the vault.
+- **Updating repos:** *Storage → Update repos* fast-forwards every clone and
+  refreshes the README copies in the vault. File-mode differences are
+  ignored. Edits to tracked files that block an update are moved to
+  `git stash` in that clone; untracked files are left alone.
 - `PUBLIC_URL` is written into note links, so choose a stable name (e.g.
   `https://saver.example.com`). Without `BLOB_DIR` and `PUBLIC_URL` the
   store stays off and everything goes into the vault.
