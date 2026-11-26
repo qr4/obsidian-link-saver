@@ -79,7 +79,8 @@ def svg(theme):
         'proxy. The livesync-bridge keeps CouchDB and the vault copy on the server in sync. The saver service, '
         'reached through the proxy by the web UI, bookmarklet and obsidian-save client, '
         'writes notes into the vault copy, stores videos and git clones in the blob store, fetches content '
-        'from the web, and asks Ollama to tag, summarize and file each link. SingleFile in the browser, with its '
+        'from the web, and asks an LLM to tag, summarize and file each link: Ollama, any OpenAI-compatible '
+        'server (OpenAI, LM Studio, llama.cpp, vLLM, OpenRouter) or Anthropic, chosen in the web UI. SingleFile in the browser, with its '
         'Companion, saves pages into the desktop vault\'s inbox folder; LiveSync carries them to the vault copy, '
         'where the saver watches the inbox and imports them. '
         'Claude Code edits the notes in the '
@@ -129,7 +130,8 @@ def svg(theme):
     cylinder(700, 450, 170, 95, "Blob store", ("videos · git clones",))
 
     # --- external ---
-    box(930, 395, 170, 70, "Ollama", ("tag · summarize · file",), accent=c["ext"], fill=c["ext_bg"])
+    box(930, 372, 170, 116, "LLM", ("tag · summarize · file", "Ollama · Anthropic", "or OpenAI-compatible"),
+        accent=c["ext"], fill=c["ext_bg"])
     box(930, 545, 170, 70, "The web", ("pages · repos · videos",), accent=c["ext"], fill=c["ext_bg"])
 
     # --- edges: sync ---
@@ -158,7 +160,7 @@ def svg(theme):
          label_anchor="start")
 
     # --- edges: external ---
-    edge([(600, 430), (930, 430)], "ext", label="LLM", label_at=(910, 422))
+    edge([(600, 430), (930, 430)], "ext")
     edge([(480, 440), (480, 580), (930, 580)], "ext", label="SingleFile · git · yt-dlp", label_at=(494, 600),
          label_anchor="start")
 

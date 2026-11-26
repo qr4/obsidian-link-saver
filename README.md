@@ -50,7 +50,7 @@ restructuring the vault is included.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/architecture-dark.svg">
-  <img alt="Obsidian on your devices syncs through the LiveSync plugin with CouchDB behind a reverse proxy; livesync-bridge keeps CouchDB and the server's vault copy in sync; the saver service, reached by the browser, the obsidian-save client and the Claude Code skill, writes notes into the vault copy, stores videos and clones in the blob store, fetches from the web and asks Ollama to tag and file each link." src="docs/architecture-light.svg">
+  <img alt="Obsidian on your devices syncs through the LiveSync plugin with CouchDB behind a reverse proxy; livesync-bridge keeps CouchDB and the server's vault copy in sync; the saver service, reached by the browser, the obsidian-save client and the Claude Code skill, writes notes into the vault copy, stores videos and clones in the blob store, fetches from the web and asks an LLM (Ollama, an OpenAI-compatible server or Anthropic) to tag and file each link." src="docs/architecture-light.svg">
 </picture>
 
 The service (`saver`) writes into a copy of the vault on the server. The
