@@ -107,9 +107,9 @@
         <aside class="col-side">
           <section class="card" id="storage-card">
             <h2>Storage</h2>
-            <div id="storage-status" class="cookie-status"></div>
+            <div id="storage-status" class="status-lines"></div>
             <ul id="storage-usage" class="bars storage-usage" hidden></ul>
-            <div class="cookie-actions" id="storage-actions" hidden>
+            <div class="card-actions" id="storage-actions" hidden>
               <button type="button" class="btn ghost small" id="repos-update" title="git pull every stored clone and refresh the README copies">Update repos</button>
               <a class="btn ghost small" href="/blobs/" target="_blank" rel="noopener">Browse</a>
             </div>
@@ -206,7 +206,7 @@
                 <button type="button" class="btn ghost small" data-reset="llm">Reset to environment</button>
               </div>
             </form>
-            <p class="cookie-message" id="llm-message" hidden></p>
+            <p class="form-message" id="llm-message" hidden></p>
           </section>
 
           <section class="card settings-card" id="whisper-card">
@@ -239,28 +239,28 @@
                 <button type="button" class="btn ghost small" data-reset="whisper">Reset to environment</button>
               </div>
             </form>
-            <p class="cookie-message" id="whisper-message" hidden></p>
+            <p class="form-message" id="whisper-message" hidden></p>
           </section>
         </div>
 
         <aside class="col-side">
-          <section class="card" id="cookies-card">
+          <section class="card" id="ytc-card">
             <h2>YouTube cookies</h2>
-            <div id="cookie-status" class="cookie-status"></div>
-            <div class="cookie-actions">
-              <input type="file" id="cookie-file" accept=".txt,.json,text/plain,application/json" hidden>
-              <button type="button" class="btn ghost small" id="cookie-upload">Upload file</button>
-              <button type="button" class="btn ghost small" id="cookie-paste">Paste</button>
-              <button type="button" class="btn ghost small danger" id="cookie-remove" hidden>Remove</button>
+            <div id="ytc-status" class="status-lines"></div>
+            <div class="card-actions">
+              <input type="file" id="ytc-file" accept=".txt,.json,text/plain,application/json" hidden>
+              <button type="button" class="btn ghost small" id="ytc-upload">Upload file</button>
+              <button type="button" class="btn ghost small" id="ytc-paste">Paste</button>
+              <button type="button" class="btn ghost small danger" id="ytc-remove" hidden>Remove</button>
             </div>
-            <form id="cookie-form" hidden>
-              <textarea id="cookie-text" rows="5" spellcheck="false" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;…   (or Cookie-Editor JSON)"></textarea>
+            <form id="ytc-form" hidden>
+              <textarea id="ytc-text" rows="5" spellcheck="false" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;…   (or Cookie-Editor JSON)"></textarea>
               <div class="actions">
                 <button type="submit" class="btn primary small">Save cookies</button>
-                <button type="button" class="btn ghost small" id="cookie-cancel">Cancel</button>
+                <button type="button" class="btn ghost small" id="ytc-cancel">Cancel</button>
               </div>
             </form>
-            <p id="cookie-message" class="cookie-message" hidden></p>
+            <p id="ytc-message" class="form-message" hidden></p>
             <details class="hint-text">
               <summary>How to export</summary>
               <p class="muted">Log in to YouTube in a private window, export with a cookies.txt extension (Netscape format) or Cookie-Editor (JSON), then close the window - YouTube rotates the cookies of sessions that stay open. Stored in <code>/config</code> (mode 600); values are never shown.</p>

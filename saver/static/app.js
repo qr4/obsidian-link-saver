@@ -282,9 +282,9 @@ function inDays(epochSeconds) {
 }
 
 function renderCookies(c) {
-  const box = $("#cookie-status");
+  const box = $("#ytc-status");
   const line = (cls, text) => el("div", { class: `line ${cls}` }, el("span", { class: "dot" }), el("span", {}, text));
-  $("#cookie-remove").hidden = !c?.present;
+  $("#ytc-remove").hidden = !c?.present;
   if (!c?.present) {
     box.replaceChildren(line("warn", "No cookies. YouTube may answer \u201cSign in to confirm you\u2019re not a bot\u201d."));
     return;
@@ -314,7 +314,7 @@ function flash(selector, text, isError = false, sticky = false) {
   if (!sticky) msg.timer = setTimeout(() => { msg.hidden = true; }, isError ? 15000 : 6000);
 }
 
-const cookieMessage = (text, isError = false) => flash("#cookie-message", text, isError);
+const cookieMessage = (text, isError = false) => flash("#ytc-message", text, isError);
 
 function errorDetail(err) {
   try { return JSON.parse(err.message); } catch { return err.message; }
@@ -325,16 +325,16 @@ async function sendCookies(form) {
     const status = await api("/api/cookies", { method: "POST", body: form });
     renderCookies(status);
     cookieMessage(`Saved ${fmt(status.count)} cookies.`);
-    $("#cookie-form").hidden = true;
-    $("#cookie-text").value = "";
+    $("#ytc-form").hidden = true;
+    $("#ytc-text").value = "";
   } catch (err) {
     cookieMessage(`Not saved: ${errorDetail(err)}`, true);
   }
 }
 
 function setupCookies() {
-  const fileInput = $("#cookie-file");
-  $("#cookie-upload").addEventListener("click", () => fileInput.click());
+  const fileInput = $("#ytc-file");
+  $("#ytc-upload").addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => {
     if (!fileInput.files.length) return;
     const form = new FormData();
@@ -342,20 +342,20 @@ function setupCookies() {
     fileInput.value = "";
     sendCookies(form);
   });
-  $("#cookie-paste").addEventListener("click", () => {
-    $("#cookie-form").hidden = false;
-    $("#cookie-text").focus();
+  $("#ytc-paste").addEventListener("click", () => {
+    $("#ytc-form").hidden = false;
+    $("#ytc-text").focus();
   });
-  $("#cookie-cancel").addEventListener("click", () => { $("#cookie-form").hidden = true; });
-  $("#cookie-form").addEventListener("submit", (event) => {
+  $("#ytc-cancel").addEventListener("click", () => { $("#ytc-form").hidden = true; });
+  $("#ytc-form").addEventListener("submit", (event) => {
     event.preventDefault();
-    const text = $("#cookie-text").value.trim();
+    const text = $("#ytc-text").value.trim();
     if (!text) return;
     const form = new FormData();
     form.append("text", text);
     sendCookies(form);
   });
-  $("#cookie-remove").addEventListener("click", async () => {
+  $("#ytc-remove").addEventListener("click", async () => {
     if (!confirm("Remove the stored YouTube cookies?")) return;
     const status = await api("/api/cookies", { method: "DELETE" });
     renderCookies(status);
@@ -525,22 +525,36 @@ async function loadModels() {
   }
 }
 
-// The result stays until the next action: a quick answer would otherwise
-// come and go before anyone looks for it.
+// The result shows in the Test button itself, and stays until a field of
+// the form changes: it only vouches for the values it was run with. What
+// went wrong goes in the message below.
+function setTestButton(state, label, title = "") {
+  const button = $("#llm-test");
+  button.classList.remove("ok", "warn", "bad");
+  if (state) button.classList.add(state);
+  button.textContent = label;
+  button.title = title;
+}
+
 async function testLLM() {
   const button = $("#llm-test");
   button.disabled = true;
-  button.textContent = "Testing…";
-  flash("#llm-message", "Sending a test prompt (a model that isn't loaded yet can take a minute)…", false, true);
+  setTestButton(null, "Testing…", "A model that isn't loaded yet can take a minute");
+  $("#llm-message").hidden = true;
   try {
     const r = await api("/api/settings/llm/test", { method: "POST", json: { values: collectSettings($("#llm-form")) } });
-    const text = `\u2713 ${r.model} answered in ${r.seconds} s: ${r.reply || "(empty)"}`;
-    flash("#llm-message", r.json ? text : `${text}\nThat isn't JSON: the prompts need a model that follows instructions closely.`, !r.json, true);
+    const answer = `${r.model} answered in ${r.seconds} s: ${r.reply || "(empty)"}`;
+    if (r.json) {
+      setTestButton("ok", `\u2713 Works \u00b7 ${r.seconds} s`, answer);
+    } else {
+      setTestButton("warn", "\u26a0 Not JSON", answer);
+      flash("#llm-message", `${answer}\nThat isn't JSON: the prompts need a model that follows instructions closely.`, true, true);
+    }
   } catch (err) {
+    setTestButton("bad", "\u2717 Failed", errorDetail(err));
     flash("#llm-message", `Test failed: ${errorDetail(err)}`, true, true);
   } finally {
     button.disabled = false;
-    button.textContent = "Test";
   }
 }
 
@@ -559,6 +573,9 @@ function setupSettings() {
   setupPicker($("#whisper-model-pick"), $('[data-setting="whisper_model"]'));
   $("#llm-load-models").addEventListener("click", loadModels);
   $("#llm-test").addEventListener("click", testLLM);
+  for (const type of ["input", "change"]) {
+    llmForm.addEventListener(type, () => { if (!$("#llm-test").disabled) setTestButton(null, "Test"); });
+  }
   llmForm.addEventListener("submit", (event) => {
     event.preventDefault();
     saveSettings(llmForm, "#llm-message", {
