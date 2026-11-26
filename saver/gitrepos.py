@@ -92,6 +92,9 @@ def clone_repo(host: str, owner: str, repo: str, clone_url: str):
     if result.returncode != 0:
         log(f"WARNING: git clone failed for {clone_url}:\n{result.stderr[-2000:]}")
         shutil.rmtree(dest, ignore_errors=True)
+        return
+    from . import blobs
+    blobs.invalidate_usage()  # a new clone in the store (no-op cost without one)
 
 
 README_NAMES = ("README.md", "Readme.md", "readme.md", "README.MD", "README.rst",

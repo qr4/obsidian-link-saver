@@ -22,6 +22,7 @@ import hashlib
 import os
 import re
 import shutil
+import threading
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -313,7 +314,99 @@ def update_repos():
             unchanged += 1
         host, owner, repo = root.parts[-3:]
         mirror_repo(host, owner, repo)
+    if updated:
+        invalidate_usage()
     result(f"Repos: {updated} updated, {unchanged} unchanged, {failed} failed")
+
+
+# ---------------------------------------------------------------------------
+# usage: how much the store holds, for the dashboard
+# ---------------------------------------------------------------------------
+# Walking a store of many clones takes a while, so the dashboard never waits
+# for it: usage() returns the last result and recounts in the background.
+# This service is the store's only writer, so it counts once at startup and
+# then only after it wrote to the store (invalidate_usage() after a
+# download, clone, repo update or offload) - but not more often than
+# USAGE_MIN_INTERVAL, which a crawl would otherwise keep doing back to back.
+USAGE_MIN_INTERVAL = 60
+_usage_lock = threading.Lock()
+_usage = {"result": None, "computed_at": 0.0, "stale": True, "running": False}
+
+
+def invalidate_usage():
+    _usage["stale"] = True
+
+
+def _tree_size(root: Path, count=None) -> tuple:
+    """(bytes, matching files) under root; symlinks are neither followed nor counted."""
+    total = matched = 0
+    stack = [root]
+    while stack:
+        try:
+            entries = list(os.scandir(stack.pop()))
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if entry.is_symlink():
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    stack.append(entry.path)
+                elif entry.is_file(follow_symlinks=False):
+                    total += entry.stat(follow_symlinks=False).st_size
+                    if count and count(entry.name):
+                        matched += 1
+            except OSError:
+                continue
+    return total, matched
+
+
+def compute_usage() -> dict:
+    """Bytes per category, with the number of videos or repositories."""
+    root = store_root()
+    categories = {}
+    for category in CATEGORIES:
+        base = root / category
+        if category == "git":
+            size, _ = _tree_size(base)
+            items = sum(1 for _ in _repo_roots(base))
+        else:
+            size, items = _tree_size(base, lambda name: Path(name).suffix.lower() in VIDEO_EXTS)
+        categories[category] = {"bytes": size, "items": items}
+    other = 0
+    if root.is_dir():
+        for entry in os.scandir(root):
+            if entry.name in CATEGORIES:
+                continue
+            if entry.is_dir(follow_symlinks=False):
+                other += _tree_size(Path(entry.path))[0]
+            elif entry.is_file(follow_symlinks=False):
+                other += entry.stat(follow_symlinks=False).st_size
+    return {"bytes": sum(c["bytes"] for c in categories.values()) + other,
+            "categories": categories, "other_bytes": other, "computed_at": time.time()}
+
+
+def _recount():
+    try:
+        result_ = compute_usage()
+    except Exception as e:  # noqa: BLE001 - a stats walk must never take anything down
+        result_ = {"error": str(e), "computed_at": time.time()}
+    with _usage_lock:
+        _usage.update(result=result_, computed_at=time.monotonic(), running=False)
+
+
+def usage() -> dict:
+    """The store's size as last counted; starts a recount when due. None
+    until the first count finishes (with "counting" in the status)."""
+    if not enabled():
+        return None
+    with _usage_lock:
+        age = time.monotonic() - _usage["computed_at"]
+        due = _usage["result"] is None or (_usage["stale"] and age > USAGE_MIN_INTERVAL)
+        if due and not _usage["running"]:
+            _usage.update(running=True, stale=False)
+            threading.Thread(target=_recount, name="blob-usage", daemon=True).start()
+        return {"counting": _usage["running"], **(_usage["result"] or {})}
 
 
 # ---------------------------------------------------------------------------
@@ -721,6 +814,7 @@ def offload(apply: bool = False, categories=CATEGORIES):
                     path.unlink()
         _remove_empty_dirs(cat_dir)
         summary.append(f"{len(moved)} {cat} files moved")
+    invalidate_usage()
     result(f"Offloaded {human(freed)} from the vault ({'; '.join(summary) or 'nothing to move'})"
            + (f", {conflicts} conflict(s) left in place" if conflicts else ""))
     return plans

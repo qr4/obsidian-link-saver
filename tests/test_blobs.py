@@ -555,3 +555,65 @@ def test_rejected_resave_keeps_an_existing_download(store, env, monkeypatch):
     with pytest.raises(ContentFreeError):
         Saver().save("https://www.youtube.com/watch?v=abc123def45")
     assert (folder / "Talk [abc123def45].mkv").exists()
+
+
+# ---------------------------------------------------------------------------
+# usage statistic
+# ---------------------------------------------------------------------------
+def test_usage_counts_bytes_videos_and_repos(store):
+    make_video_dir(store / "youtube" / "chan" / "A [abc123def45]")
+    make_video_dir(store / "youtube" / "chan" / "B [bcd123def45]", stem="B [bcd123def45]")
+    repo = store / "git" / "github.com" / "owner" / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    (repo / "main.c").write_bytes(b"x" * 1000)
+    (store / "stray.bin").write_bytes(b"y" * 10)
+    (store / "youtube" / "link.mkv").symlink_to(store / "stray.bin")  # not followed, not counted
+
+    u = blobs.compute_usage()
+    yt = u["categories"]["youtube"]
+    assert yt["items"] == 2 and yt["bytes"] > 2 * 256 * 1024
+    assert u["categories"]["git"] == {"bytes": 1000 + len("ref: refs/heads/main\n"), "items": 1}
+    assert u["categories"]["video"] == {"bytes": 0, "items": 0}
+    assert u["other_bytes"] == 10
+    assert u["bytes"] == yt["bytes"] + u["categories"]["git"]["bytes"] + 10
+
+
+def test_usage_is_counted_in_the_background_and_cached(store, monkeypatch):
+    calls = []
+    monkeypatch.setattr(blobs, "_usage", {"result": None, "computed_at": 0.0, "stale": True, "running": False})
+    monkeypatch.setattr(blobs, "compute_usage", lambda: calls.append(1) or {"bytes": 5, "categories": {}})
+    first = blobs.usage()
+    deadline = time.time() + 5
+    while blobs._usage["running"] and time.time() < deadline:
+        time.sleep(0.01)
+    assert first["counting"] is True or first.get("bytes") == 5
+    assert blobs.usage() == {"counting": False, "bytes": 5, "categories": {}}
+    assert len(calls) == 1
+    blobs.invalidate_usage()  # a save changed the store, but it was just counted
+    blobs.usage()
+    assert len(calls) == 1
+
+    settings.update(blob_dir="")
+    assert blobs.usage() is None
+
+
+def test_storage_status_reports_usage(store, monkeypatch):
+    from saver.app import create_app
+    monkeypatch.setattr(blobs, "usage", lambda: {"counting": False, "bytes": 42})
+    status = TestClient(create_app(run_lifecycle=False)).get("/api/storage").json()
+    assert status["usage"] == {"counting": False, "bytes": 42}
+
+
+def test_usage_recounts_only_after_a_write(store, monkeypatch):
+    calls = []
+    monkeypatch.setattr(blobs, "_usage", {"result": {"bytes": 1}, "computed_at": time.monotonic() - 3600,
+                                          "stale": False, "running": False})
+    monkeypatch.setattr(blobs, "compute_usage", lambda: calls.append(1) or {"bytes": 2})
+    assert blobs.usage()["bytes"] == 1 and not calls  # an hour old, but nothing was written
+    blobs.invalidate_usage()
+    blobs.usage()
+    deadline = time.time() + 5
+    while blobs._usage["running"] and time.time() < deadline:
+        time.sleep(0.01)
+    assert calls == [1] and blobs.usage()["bytes"] == 2

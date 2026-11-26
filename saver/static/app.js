@@ -199,10 +199,32 @@ function renderStorage(st) {
     box.replaceChildren(line("warn", "Off: videos and clones go into the vault. Set BLOB_DIR and PUBLIC_URL to store them offsite."));
   } else {
     const lines = [line("ok", `Offsite store at ${st.blob_dir}`)];
+    const u = st.usage;
+    if (u?.error) lines.push(line("warn", `Could not measure the store: ${u.error}`));
+    else if (u?.bytes != null) lines.push(line("", `Holds ${formatBytes(u.bytes)}${u.counting ? " · recounting…" : ""}`));
+    else if (u?.counting) lines.push(line("", "Measuring the store…"));
     if (st.free != null) lines.push(line("", `${formatBytes(st.free)} free of ${formatBytes(st.total)}`));
     lines.push(line("", `Links use ${st.public_url}`));
     box.replaceChildren(...lines);
   }
+  renderStorageUsage(st.enabled && !st.problem ? st.usage : null);
+}
+
+const STORE_CATEGORIES = [["youtube", "YouTube", "video"], ["video", "Talks", "video"], ["git", "Repos", "repo"]];
+
+// Per-category sizes of the blob store, bars relative to the biggest.
+function renderStorageUsage(u) {
+  const list = $("#storage-usage");
+  const rows = u?.categories ? STORE_CATEGORIES.map(([key, label, noun]) => {
+    const c = u.categories[key] || { bytes: 0, items: 0 };
+    return [`${label} · ${fmt(c.items)} ${noun}${c.items === 1 ? "" : "s"}`, c.bytes];
+  }).filter(([, bytes], i) => bytes || STORE_CATEGORIES[i][0] !== "video") : [];
+  if (u?.other_bytes) rows.push(["Other", u.other_bytes]);
+  list.hidden = !rows.length;
+  const max = Math.max(1, ...rows.map((r) => r[1]));
+  list.replaceChildren(...rows.map(([name, bytes]) => el("li", {},
+    el("span", {}, name), el("span", { class: "n" }, formatBytes(bytes)),
+    el("span", { class: "track" }, el("span", { style: `width:${(bytes / max) * 100}%` })))));
 }
 
 function formatBytes(n) {

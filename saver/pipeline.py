@@ -397,6 +397,8 @@ class Saver:
         except Exception as e:  # noqa: BLE001
             log(f"WARNING: video download failed ({e}) - the Area entry links the source URL instead. "
                 "Retry the job once the cause (cookies, rate limit) is fixed.")
+        finally:
+            blobs.invalidate_usage()
 
         # Filed after the download, so the transcript (when there is one)
         # decides what the video is about, not just its description.
@@ -441,6 +443,8 @@ class Saver:
             raise
         except Exception as e:  # noqa: BLE001
             log(f"WARNING: talk download failed ({e}) - the Area entry links the source URL instead")
+        finally:
+            blobs.invalidate_usage()
 
         tags, summary, topic_area = self.analyze_download(
             video_text(f"Title: {title}\nSpeakers: {meta['speakers']}\nConference: {meta['conference']}",
@@ -503,6 +507,8 @@ class Saver:
                 log(f"[{i}/{total}] {label}: FAILED ({e})")
                 failed += 1
                 continue
+            finally:
+                blobs.invalidate_usage()
 
             db.complete_entry(key, url=f"https://www.youtube.com/watch?v={vid}",
                               note=f"Dumps/youtube/{rel_dir}", job_id=_job_id())

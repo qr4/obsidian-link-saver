@@ -317,7 +317,7 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
         elif settings.blob_dir:
             try:
                 usage = shutil.disk_usage(settings.blob_dir)
-                status.update(free=usage.free, total=usage.total)
+                status.update(free=usage.free, total=usage.total, usage=blobs.usage())
             except OSError as e:
                 status["problem"] = f"blob store not accessible: {e}"
         return status

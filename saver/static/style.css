@@ -267,6 +267,8 @@ textarea:focus, input:focus, select:focus { outline: 2px solid var(--accent); ou
 .hint-text p { margin: 6px 0 0; }
 .hint-text code { font-family: var(--mono); font-size: 11px; }
 
+.storage-usage { margin: 2px 0 14px; }
+
 /* settings */
 .small-text { font-size: 12px; }
 .settings-card > p.small-text { margin: -4px 0 14px; }
