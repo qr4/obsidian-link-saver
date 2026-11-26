@@ -20,8 +20,9 @@ def env(tmp_path, monkeypatch):
     (vault / "Areas" / "programming" / "python.md").write_text(
         "- #python #tooling\n\tExisting entry.\n\thttps://example.org/old\n", encoding="utf-8")
     (vault / ".obsidian").mkdir()
+    from saver.usersettings import FIELDS
     saved = {f: getattr(settings, f) for f in ("vault_dir", "config_dir", "api_token", "whisper_enabled",
-                                                 "inbox_watch")}
+                                                 "inbox_watch", *FIELDS)}
     settings.update(vault_dir=vault, config_dir=config, api_token="", whisper_enabled=False,
                     inbox_watch=False)
     database = dbmod.Database(config / "saver.db")

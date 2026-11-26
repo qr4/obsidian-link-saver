@@ -7,9 +7,11 @@ Paste a URL (or use the bookmarklet, a keybinding, or the API) and it:
   clones git repositories, downloads PDFs and videos (YouTube and anything
   [yt-dlp](https://github.com/yt-dlp/yt-dlp) supports);
 - transcribes videos with Whisper (on an NVIDIA GPU if you have one);
-- tags, summarizes and files each link with a local LLM through
-  [Ollama](https://ollama.com), as a bullet in a topic note under `Areas/`
-  ([how](docs/llm.md));
+- tags, summarizes and files each link with an LLM, as a bullet in a topic
+  note under `Areas/` ([how](docs/llm.md)): a local one through
+  [Ollama](https://ollama.com) or any OpenAI-compatible server (LM Studio,
+  llama.cpp, vLLM), or a hosted API (OpenAI, Anthropic, OpenRouter),
+  switchable in the web UI;
 - keeps bulky files (videos, full clones) in a blob store outside the vault,
   served by the service, so your devices only sync what's worth searching.
 
@@ -119,6 +121,12 @@ Notes:
   `Environment="OLLAMA_HOST=0.0.0.0"` under `[Service]`, restart it; mind
   your firewall), or point `OLLAMA_URL` at another Ollama. Docker Desktop
   (macOS, Windows) reaches the host's Ollama as is.
+- **No Ollama?** Any other backend works too: put e.g.
+  `LLM_PROVIDER=openai LLM_MODEL=<model> LLM_API_KEY=<key>` in front of the
+  command (`LLM_URL=http://host.docker.internal:1234/v1` for LM Studio or
+  another local OpenAI-compatible server; `LLM_PROVIDER=anthropic` for
+  Anthropic), or switch it in the web UI's *Settings* tab, which also
+  picks the Whisper model.
 - Timestamps in notes and job logs use the container's time zone, UTC
   unless you add your own in front of the command, e.g. `TZ=Europe/Berlin`.
 - Transcription runs on the CPU with Whisper `small`; long videos take a
@@ -140,7 +148,10 @@ syncing your vault another way? See
 - A Linux server with Docker and Compose v2.
 - An Ollama server with a model pulled, e.g. `ollama pull qwen3.8:27b`.
   Smaller models work too; set `OLLAMA_MODEL` to match. Ollama can run on
-  the same host.
+  the same host. Or instead another LLM backend: any OpenAI-compatible
+  server, or a hosted API with a key (`LLM_PROVIDER`, see
+  [the LLM settings](docs/llm.md#talking-to-the-llm)); the web UI's
+  *Settings* tab switches backend, model and Whisper model later.
 - A reverse proxy with HTTPS and two hostnames pointing at the server: one
   for the web UI (`saver.example.com` below) and one for CouchDB
   (`sync.example.com`). The Obsidian mobile app only syncs over HTTPS. The
@@ -263,7 +274,7 @@ every placeholder:
 | `PROXY_NETWORK` | Your proxy's Docker network |
 | `PUBLIC_URL` | `https://saver.example.com`. It's written into note links, so choose it once |
 | `LIVESYNC_PUBLIC_URL` | `https://sync.example.com` |
-| `OLLAMA_URL`, `OLLAMA_MODEL` | Your Ollama (`http://host.docker.internal:11434` if it runs on the Docker host) and model |
+| `OLLAMA_URL`, `OLLAMA_MODEL` | Your Ollama (`http://host.docker.internal:11434` if it runs on the Docker host) and model. Another backend: `LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY` (and `LLM_URL`) instead |
 | `TZ` | Your time zone, for timestamps in notes |
 | `API_TOKEN` | Optional, but recommended: a secret (`openssl rand -hex 24`). The web UI asks for it once; the client and the skill read it from `SAVE_SERVICE_TOKEN`. Empty, the API is open |
 
@@ -340,7 +351,7 @@ LiveSync doesn't sync `.obsidian` (settings, plugins) unless you enable its
   each stage; the entry appears under `Areas/` on your devices moments after
   it finishes.
 - **YouTube cookies** (recommended; YouTube often blocks anonymous
-  downloads): in the dashboard's *YouTube cookies* card, upload a
+  downloads): in the *Settings* tab's *YouTube cookies* card, upload a
   `cookies.txt` exported from a logged-in browser ("Get cookies.txt LOCALLY"
   or Cookie-Editor's JSON). Export from a private window and close it
   afterwards, because YouTube rotates the cookies of sessions that stay open.

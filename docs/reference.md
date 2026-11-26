@@ -200,17 +200,27 @@ section describes the setup.
 | Container path | Purpose |
 |---|---|
 | `/vault` | The server's copy of the vault (`Areas/`, `Dumps/`, `.obsidian/graph.json`) |
-| `/config` | `saver.db` (SQLite), `cookies.txt`, `models/` (Whisper), `uploads/`. Keep this out of the vault: syncing a live SQLite database corrupts it |
+| `/config` | `saver.db` (SQLite), `cookies.txt`, `settings.json` (what the Settings tab changed), `models/` (Whisper), `uploads/`. Keep this out of the vault: syncing a live SQLite database corrupts it |
 | `/blobs` | Offsite store for videos and full git clones (see above) |
 
 ## Configuration (environment variables)
 
+The LLM and Whisper settings (`LLM_*`, `OLLAMA_*`, `WHISPER_*`) can also be
+changed in the web UI's **Settings** tab. Those changes are stored in
+`/config/settings.json` and win over the environment; *Reset to
+environment* drops them again.
+
 | Variable | Default | |
 |---|---|---|
-| `OLLAMA_URL` | `http://localhost:11434` | Ollama server (required in the compose file) |
-| `OLLAMA_MODEL` | `qwen3.8:27b` | |
-| `OLLAMA_THINK` / `OLLAMA_TEMPERATURE` / `OLLAMA_TIMEOUT` | `false` / `0.2` / `180` | |
-| `OLLAMA_NUM_CTX` | `32768` | Context window per request, in tokens. Filing a link sends your whole `Areas/` tree (about 22,000 tokens at 1,500 notes); raise it for a bigger vault, `0` leaves it to Ollama |
+| `LLM_PROVIDER` | `ollama` | `ollama`, `openai` (OpenAI or any OpenAI-compatible server: LM Studio, llama.cpp, vLLM, OpenRouter…) or `anthropic`. [Details](llm.md#talking-to-the-llm) |
+| `LLM_URL` | *(provider default)* | Base URL; empty means `OLLAMA_URL` for Ollama, `https://api.openai.com/v1`, `https://api.anthropic.com` |
+| `LLM_MODEL` | `OLLAMA_MODEL` | Model name |
+| `LLM_API_KEY` | *(empty)* | For hosted APIs |
+| `LLM_TEMPERATURE` / `LLM_TIMEOUT` | `0.2` / `180` | Older names `OLLAMA_TEMPERATURE` / `OLLAMA_TIMEOUT` still work. `LLM_TEMPERATURE=none` sends none |
+| `OLLAMA_URL` | `http://localhost:11434` | Ollama server (`http://host.docker.internal:11434` in the compose files) |
+| `OLLAMA_MODEL` | `qwen3.8:27b` | Model when `LLM_MODEL` is unset |
+| `OLLAMA_THINK` | `false` | Ollama only |
+| `OLLAMA_NUM_CTX` | `32768` | Ollama only. Context window per request, in tokens. Filing a link sends your whole `Areas/` tree (about 22,000 tokens at 1,500 notes); raise it for a bigger vault, `0` leaves it to Ollama |
 | `BLOB_DIR` | *(empty)* | Offsite store path inside the container (`/blobs`); empty keeps everything in the vault |
 | `PUBLIC_URL` | *(empty)* | How your devices reach the service, e.g. `https://saver.example.com`; required for the store. Written into note links |
 | `OFFLOAD_MIN_AGE` | `600` | Seconds a vault file must be untouched before the offload moves it |
@@ -219,6 +229,7 @@ section describes the setup.
 | `WORKERS` | `2` | Jobs in parallel (transcription is always serialized) |
 | `API_TOKEN` | *(empty)* | When set, the UI and API need `Authorization: Bearer <token>`. Set this if the service is reachable from outside your LAN |
 | `WHISPER_ENABLED` | `true` | |
+| `WHISPER_DEVICE` | `auto` | `cuda` or `cpu` to force one |
 | `WHISPER_MODEL` | `large-v3` | Any faster-whisper model, e.g. `large-v3-turbo` for speed |
 | `WHISPER_COMPUTE_TYPE` | `auto` | `float16` on GPU, `int8` on CPU; `int8_float16` halves VRAM |
 | `WHISPER_BATCH_SIZE` | `8` | Lower it if VRAM is tight |
@@ -262,6 +273,8 @@ curl -F files=@paper.pdf -F source=https://example.org/paper.pdf $URL/api/upload
 | `DELETE` | `/api/jobs` | Clear finished jobs |
 | `POST` | `/api/pause`, `/api/resume` | Stop/start picking up new jobs (running ones finish) |
 | `GET` | `/api/entries?q=&kind=` | Search saved entries |
+| `GET` / `PUT` | `/api/settings` | LLM and Whisper settings (the API key only as set/not set) / change them: `{"values": {…}, "reset": [names]}` |
+| `POST` | `/api/settings/llm/models`, `/api/settings/llm/test` | List the provider's models / send a test prompt, with unsaved `{"values": {…}}` |
 | `GET` / `POST` / `DELETE` | `/api/cookies` | Cookie status (no values) / upload (`file` or `text` form field, Netscape or JSON) / remove |
 | `GET` | `/api/registry` | The whole registry as one JSON object (a backup `import` reads back) |
 | `POST` | `/api/registry/patch` | `[{"key", "set": {…}, "unset": […]}]`, used by `fix_registry.py` |

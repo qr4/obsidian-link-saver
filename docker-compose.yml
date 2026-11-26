@@ -26,7 +26,7 @@ services:
     networks: [default, proxy]
     ports:
       - "${SAVER_PORT:-8765}:8765"
-    # Lets OLLAMA_URL point at an Ollama running on the Docker host:
+    # Lets OLLAMA_URL (or LLM_URL) point at a server on the Docker host:
     # http://host.docker.internal:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -34,7 +34,13 @@ services:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
       TZ: ${TZ:-Etc/UTC}
-      OLLAMA_URL: ${OLLAMA_URL:?set OLLAMA_URL in .env}
+      # LLM and Whisper settings can also be changed in the web UI's
+      # Settings tab, which then wins over these.
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_URL: ${LLM_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.8:27b}
       WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
       WORKERS: ${WORKERS:-2}

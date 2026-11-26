@@ -5,12 +5,14 @@ Everything the service writes lives in one of two places:
               server's synced copy of the vault here
   CONFIG_DIR  service state that must NOT live in a synced folder: the
               SQLite database (a sync tool would happily sync a half-written
-              WAL), cookies, Whisper models, uploads
+              WAL), cookies, Whisper models, uploads, and settings.json
+              (what the web UI's Settings tab changed)
 """
 import os
 import shlex
 from dataclasses import dataclass, field, fields
 from pathlib import Path
+from typing import Optional
 
 
 def _env(name: str, default: str) -> str:
@@ -31,6 +33,17 @@ def _int(name: str, default: int) -> int:
 
 def _float(name: str, default: float) -> float:
     return float(_env(name, str(default)))
+
+
+def _opt_float(name: str, default: Optional[float]) -> Optional[float]:
+    value = os.environ.get(name, "").strip()
+    if value == "":
+        return default
+    return None if value.lower() in ("none", "off", "default") else float(value)
+
+
+LLM_PROVIDERS = ("ollama", "openai", "anthropic")
+DEFAULT_LLM_URLS = {"openai": "https://api.openai.com/v1", "anthropic": "https://api.anthropic.com"}
 
 
 @dataclass
@@ -69,14 +82,25 @@ class Settings:
     inbox_watch: bool = field(default_factory=lambda: _bool("INBOX_WATCH", True))
     inbox_poll_seconds: float = field(default_factory=lambda: _float("INBOX_POLL_SECONDS", 3.0))
 
-    # LLM (Ollama)
+    # LLM. Provider: "ollama" (native API), "openai" (any OpenAI-compatible
+    # /chat/completions server: OpenAI, LM Studio, llama.cpp, vLLM,
+    # OpenRouter, ...) or "anthropic". The OLLAMA_* names are the old ones,
+    # still read as fallbacks. All of these can be overridden from the web
+    # UI's Settings tab (stored in CONFIG_DIR/settings.json).
+    llm_provider: str = field(default_factory=lambda: _env("LLM_PROVIDER", "ollama").strip().lower())
+    # Base URL; empty means the provider's default (for Ollama: OLLAMA_URL).
+    llm_url: str = field(default_factory=lambda: _env("LLM_URL", "").rstrip("/"))
+    llm_model: str = field(default_factory=lambda: _env("LLM_MODEL", _env("OLLAMA_MODEL", "qwen3.8:27b")))
+    llm_api_key: str = field(default_factory=lambda: _env("LLM_API_KEY", ""))
+    # keep tagging/summarizing deterministic-ish. None = don't send one
+    # (LLM_TEMPERATURE=none): some hosted reasoning models refuse anything
+    # but their default.
+    llm_temperature: Optional[float] = field(default_factory=lambda: _opt_float(
+        "LLM_TEMPERATURE", _opt_float("OLLAMA_TEMPERATURE", 0.2)))
+    llm_timeout: int = field(default_factory=lambda: _int("LLM_TIMEOUT", _int("OLLAMA_TIMEOUT", 180)))
     ollama_url: str = field(default_factory=lambda: _env("OLLAMA_URL", "http://localhost:11434").rstrip("/"))
-    ollama_model: str = field(default_factory=lambda: _env("OLLAMA_MODEL", "qwen3.8:27b"))
     # skip the model's <think> reasoning pass - we just want fast, structured JSON
     ollama_think: bool = field(default_factory=lambda: _bool("OLLAMA_THINK", False))
-    # keep tagging/summarizing deterministic-ish
-    ollama_temperature: float = field(default_factory=lambda: _float("OLLAMA_TEMPERATURE", 0.2))
-    ollama_timeout: int = field(default_factory=lambda: _int("OLLAMA_TIMEOUT", 180))
     # Context window per request. Filing a link sends the whole Areas/ tree;
     # Ollama's own default can be far smaller and silently cuts the prompt.
     # 0 leaves it to Ollama.
@@ -178,6 +202,18 @@ class Settings:
     @property
     def whisper_model_dir(self) -> Path:
         return self.config_dir / "models"
+
+    @property
+    def user_settings_path(self) -> Path:
+        return self.config_dir / "settings.json"
+
+    @property
+    def llm_base_url(self) -> str:
+        if self.llm_url:
+            return self.llm_url.rstrip("/")
+        if self.llm_provider == "ollama":
+            return self.ollama_url
+        return DEFAULT_LLM_URLS.get(self.llm_provider, "")
 
     @property
     def cookies_path(self):

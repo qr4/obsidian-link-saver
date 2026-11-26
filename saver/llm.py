@@ -1,4 +1,5 @@
-"""Ollama calls and the tagging/summary/title/area prompts."""
+"""LLM calls (Ollama, OpenAI-compatible, Anthropic) and the
+tagging/summary/title/area prompts."""
 import json
 import re
 
@@ -43,19 +44,115 @@ def extract_json(text: str):
     return parsed if isinstance(parsed, dict) else None
 
 
-def call_raw(prompt: str) -> str:
-    payload = {
-        "model": settings.ollama_model,
-        "prompt": prompt,
-        "stream": False,
-        "think": settings.ollama_think,
-        "options": {"temperature": settings.ollama_temperature,
-                    **({"num_ctx": settings.ollama_num_ctx} if settings.ollama_num_ctx > 0 else {})},
-    }
-    response = requests.post(f"{settings.ollama_url}/api/generate", json=payload,
-                             timeout=settings.ollama_timeout)
-    response.raise_for_status()
+class LLMError(RuntimeError):
+    pass
+
+
+# Anthropic requires an output cap; every answer here is a short JSON object.
+ANTHROPIC_MAX_TOKENS = 4096
+ANTHROPIC_VERSION = "2023-06-01"
+
+
+def _check(response, provider: str):
+    """raise_for_status(), but keeping what the server said: "model not
+    found" or "invalid API key" is the useful part of a failed request."""
+    if response.status_code >= 400:
+        try:
+            body = response.json()
+            detail = body.get("error", body) if isinstance(body, dict) else body
+            if isinstance(detail, dict):
+                detail = detail.get("message", detail)
+        except ValueError:
+            detail = response.text
+        raise LLMError(f"{provider} answered HTTP {response.status_code}: {str(detail)[:300]}")
+
+
+def _anthropic_root(cfg) -> str:
+    base = cfg.llm_base_url
+    return base[:-3] if base.endswith("/v1") else base
+
+
+def _headers(cfg) -> dict:
+    if cfg.llm_provider == "anthropic":
+        return {"x-api-key": cfg.llm_api_key, "anthropic-version": ANTHROPIC_VERSION}
+    return {"Authorization": f"Bearer {cfg.llm_api_key}"} if cfg.llm_api_key else {}
+
+
+def _ollama(prompt: str, cfg) -> str:
+    options = {}
+    if cfg.llm_temperature is not None:
+        options["temperature"] = cfg.llm_temperature
+    if cfg.ollama_num_ctx > 0:
+        options["num_ctx"] = cfg.ollama_num_ctx
+    payload = {"model": cfg.llm_model, "prompt": prompt, "stream": False,
+               "think": cfg.ollama_think, "options": options}
+    response = requests.post(f"{cfg.llm_base_url}/api/generate", json=payload,
+                             headers=_headers(cfg), timeout=cfg.llm_timeout)
+    _check(response, "Ollama")
     return response.json().get("response", "")
+
+
+def _openai(prompt: str, cfg) -> str:
+    payload = {"model": cfg.llm_model, "messages": [{"role": "user", "content": prompt}], "stream": False}
+    if cfg.llm_temperature is not None:
+        payload["temperature"] = cfg.llm_temperature
+    response = requests.post(f"{cfg.llm_base_url}/chat/completions", json=payload,
+                             headers=_headers(cfg), timeout=cfg.llm_timeout)
+    _check(response, "OpenAI-compatible server")
+    choices = response.json().get("choices") or [{}]
+    return (choices[0].get("message") or {}).get("content") or ""
+
+
+def _anthropic(prompt: str, cfg) -> str:
+    payload = {"model": cfg.llm_model, "max_tokens": ANTHROPIC_MAX_TOKENS,
+               "messages": [{"role": "user", "content": prompt}]}
+    if cfg.llm_temperature is not None:
+        payload["temperature"] = cfg.llm_temperature
+    response = requests.post(f"{_anthropic_root(cfg)}/v1/messages", json=payload,
+                             headers=_headers(cfg), timeout=cfg.llm_timeout)
+    _check(response, "Anthropic")
+    return "".join(block.get("text", "") for block in response.json().get("content") or []
+                   if block.get("type") == "text")
+
+
+BACKENDS = {"ollama": _ollama, "openai": _openai, "anthropic": _anthropic}
+
+
+def complete(prompt: str, cfg=None) -> str:
+    """One prompt, one answer, with the configured provider. cfg defaults to
+    the live settings; the Settings tab passes unsaved values to test them."""
+    cfg = cfg or settings
+    backend = BACKENDS.get(cfg.llm_provider)
+    if backend is None:
+        raise LLMError(f"unknown LLM provider {cfg.llm_provider!r} (expected one of {', '.join(BACKENDS)})")
+    if not cfg.llm_model:
+        raise LLMError("no LLM model configured")
+    return backend(prompt, cfg)
+
+
+def list_models(cfg=None) -> list:
+    """Model names the provider offers, for the Settings tab's picker."""
+    cfg = cfg or settings
+    if cfg.llm_provider == "ollama":
+        url, provider = f"{cfg.llm_base_url}/api/tags", "Ollama"
+    elif cfg.llm_provider == "openai":
+        url, provider = f"{cfg.llm_base_url}/models", "OpenAI-compatible server"
+    elif cfg.llm_provider == "anthropic":
+        url, provider = f"{_anthropic_root(cfg)}/v1/models?limit=1000", "Anthropic"
+    else:
+        raise LLMError(f"unknown LLM provider {cfg.llm_provider!r}")
+    response = requests.get(url, headers=_headers(cfg), timeout=min(cfg.llm_timeout, 30))
+    _check(response, provider)
+    data = response.json()
+    if cfg.llm_provider == "ollama":
+        names = [m.get("name") for m in data.get("models") or []]
+    else:
+        names = [m.get("id") for m in data.get("data") or []]
+    return sorted(n for n in names if isinstance(n, str) and n)
+
+
+def call_raw(prompt: str) -> str:
+    return complete(prompt)
 
 
 def call_json(prompt: str) -> dict:

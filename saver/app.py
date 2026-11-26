@@ -1,19 +1,20 @@
 """HTTP API and web UI."""
 import secrets
+import shutil
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urlparse
 
+import requests
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-import shutil
-
-from . import __version__, blobs, cookies
+from . import __version__, blobs, cookies, usersettings
 from .waypoints import keeper as waypoint_keeper
 from .blobserve import router as blob_router
 from .config import settings
@@ -33,6 +34,9 @@ watcher = InboxWatcher(manager)
 
 def startup():
     ensure_directories()
+    overrides = usersettings.load()
+    if overrides:
+        log(f"Settings changed in the web UI: {', '.join(sorted(overrides))}")
     db = get_db()
     stale = db.clear_stale_claims()
     if stale:
@@ -259,7 +263,8 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
             "config": {
                 "vault": str(settings.vault_dir),
                 "vault_name": settings.vault_name,
-                "ollama_model": settings.ollama_model,
+                "llm_provider": settings.llm_provider,
+                "llm_model": settings.llm_model,
                 "cookies": cookies.status(),
                 "storage": storage_status(),
                 "inbox_watch": settings.inbox_watch,
@@ -363,6 +368,55 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
     @app.delete("/api/cookies", dependencies=auth)
     def delete_cookies():
         return {"deleted": cookies.delete(), **cookies.status()}
+
+    # ---- settings (Settings tab) ------------------------------------------------------
+    class SettingsUpdate(BaseModel):
+        values: dict = {}
+        reset: List[str] = []
+
+    class SettingsTry(BaseModel):
+        values: dict = {}
+
+    @app.get("/api/settings", dependencies=auth)
+    def get_settings():
+        """LLM and Whisper settings - never the API key, only whether one is set."""
+        return usersettings.describe()
+
+    @app.put("/api/settings", dependencies=auth)
+    def put_settings(body: SettingsUpdate):
+        try:
+            return usersettings.save(body.values, body.reset)
+        except usersettings.SettingsError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    def _candidate(values):
+        try:
+            return usersettings.candidate(values)
+        except usersettings.SettingsError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    @app.post("/api/settings/llm/models", dependencies=auth)
+    def llm_models(body: SettingsTry):
+        """The models the (possibly unsaved) provider offers."""
+        from . import llm
+        cfg = _candidate(body.values)
+        try:
+            return {"models": llm.list_models(cfg), "base_url": cfg.llm_base_url}
+        except (llm.LLMError, requests.RequestException, ValueError) as e:
+            raise HTTPException(status_code=502, detail=f"could not list models at {cfg.llm_base_url}: {e}")
+
+    @app.post("/api/settings/llm/test", dependencies=auth)
+    def llm_test(body: SettingsTry):
+        """One tiny prompt with the (possibly unsaved) settings."""
+        from . import llm
+        cfg = _candidate(body.values)
+        started = time.monotonic()
+        try:
+            reply = llm.complete('Reply with ONLY this JSON, nothing else: {"ok": true}', cfg)
+        except (llm.LLMError, requests.RequestException, ValueError) as e:
+            raise HTTPException(status_code=502, detail=f"{cfg.llm_provider} at {cfg.llm_base_url}: {e}")
+        return {"ok": True, "json": llm.extract_json(reply) is not None, "reply": reply.strip()[:300],
+                "seconds": round(time.monotonic() - started, 1), "model": cfg.llm_model}
 
     # ---- vault lock leases (vault-maintenance skill) ----------------------------------
     class LeaseRequest(BaseModel):

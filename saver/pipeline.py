@@ -70,7 +70,8 @@ def _park_duplicate(path: Path):
 TRANSCRIPT_CHARS = 4000
 # Tags and summary read at most this much of the saved text: about 5,000-7,000
 # tokens, roughly the first 3,500 words. Untrimmed, a very long page plus the
-# prompt could exceed OLLAMA_NUM_CTX, and Ollama would cut the prompt silently.
+# prompt could exceed the model's context window (OLLAMA_NUM_CTX for Ollama), and
+# Ollama would cut the prompt silently.
 ANALYZE_CHARS = 20000
 
 

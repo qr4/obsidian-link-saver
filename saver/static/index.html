@@ -16,6 +16,7 @@
     <nav class="tabs" role="tablist">
       <button class="tab active" data-tab="dashboard" role="tab">Dashboard</button>
       <button class="tab" data-tab="library" role="tab">Library</button>
+      <button class="tab" data-tab="settings" role="tab">Settings</button>
     </nav>
     <a class="nav-link" id="storage-link" href="/blobs/" target="_blank" rel="noopener"
        title="Browse the blob store: videos and git clones" hidden>Storage ↗</a>
@@ -104,28 +105,6 @@
         </div>
 
         <aside class="col-side">
-          <section class="card" id="cookies-card">
-            <h2>YouTube cookies</h2>
-            <div id="cookie-status" class="cookie-status"></div>
-            <div class="cookie-actions">
-              <input type="file" id="cookie-file" accept=".txt,.json,text/plain,application/json" hidden>
-              <button type="button" class="btn ghost small" id="cookie-upload">Upload file</button>
-              <button type="button" class="btn ghost small" id="cookie-paste">Paste</button>
-              <button type="button" class="btn ghost small danger" id="cookie-remove" hidden>Remove</button>
-            </div>
-            <form id="cookie-form" hidden>
-              <textarea id="cookie-text" rows="5" spellcheck="false" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;…   (or Cookie-Editor JSON)"></textarea>
-              <div class="actions">
-                <button type="submit" class="btn primary small">Save cookies</button>
-                <button type="button" class="btn ghost small" id="cookie-cancel">Cancel</button>
-              </div>
-            </form>
-            <p id="cookie-message" class="cookie-message" hidden></p>
-            <details class="hint-text">
-              <summary>How to export</summary>
-              <p class="muted">Log in to YouTube in a private window, export with a cookies.txt extension (Netscape format) or Cookie-Editor (JSON), then close the window - YouTube rotates the cookies of sessions that stay open. Stored in <code>/config</code> (mode 600); values are never shown.</p>
-            </details>
-          </section>
           <section class="card" id="storage-card">
             <h2>Storage</h2>
             <div id="storage-status" class="cookie-status"></div>
@@ -176,6 +155,120 @@
         <ul id="lib-list" class="entries"></ul>
         <div class="center"><button class="btn ghost" id="lib-more" hidden>Load more</button></div>
       </section>
+    </section>
+
+    <section id="settings" class="view" hidden>
+      <div class="grid">
+        <div class="col-main">
+          <section class="card settings-card" id="llm-card">
+            <div class="card-head">
+              <h2>LLM</h2>
+              <span class="muted small-text" id="llm-effective"></span>
+            </div>
+            <p class="muted small-text">Tags, summarizes and files every saved link. Changes apply to the next request; jobs already running finish with the old settings.</p>
+            <form id="llm-form" class="settings-form" autocomplete="off">
+              <label>Provider
+                <select data-setting="llm_provider">
+                  <option value="ollama">Ollama</option>
+                  <option value="openai">OpenAI-compatible API</option>
+                  <option value="anthropic">Anthropic</option>
+                </select></label>
+              <label>Base URL
+                <input type="url" data-setting="llm_url" spellcheck="false">
+                <small id="llm-url-hint">Empty uses the provider's default.</small></label>
+              <label class="wide">Model
+                <span class="input-row">
+                  <input type="text" data-setting="llm_model" list="llm-models" spellcheck="false" required>
+                  <button type="button" class="btn ghost small" id="llm-load-models">Load models</button>
+                </span>
+                <datalist id="llm-models"></datalist>
+                <small id="llm-models-hint"></small></label>
+              <label class="wide">API key
+                <input type="password" data-setting="llm_api_key" autocomplete="new-password" spellcheck="false">
+                <small id="llm-key-hint"></small>
+                <span class="check" id="llm-key-clear-wrap" hidden><input type="checkbox" id="llm-key-clear"> Remove the stored key</span></label>
+              <label>Temperature
+                <input type="number" data-setting="llm_temperature" min="0" max="2" step="0.05">
+                <small>Low keeps tags and filing stable. Empty sends none (some hosted reasoning models only accept their default).</small></label>
+              <label>Timeout (seconds)
+                <input type="number" data-setting="llm_timeout" min="1" max="3600">
+                <small>Per request. A model being loaded can take minutes.</small></label>
+              <label class="ollama-only">Context window (tokens)
+                <input type="number" data-setting="ollama_num_ctx" min="0" step="1024">
+                <small>Filing sends the whole Areas/ tree; Ollama's own default would cut it silently. 0 leaves it to Ollama.</small></label>
+              <label class="check ollama-only"><input type="checkbox" data-setting="ollama_think">
+                <span>Thinking<small>Let a reasoning model think first. Slower; the answers are short JSON.</small></span></label>
+              <div class="actions wide">
+                <button type="submit" class="btn primary small">Save</button>
+                <button type="button" class="btn ghost small" id="llm-test">Test</button>
+                <button type="button" class="btn ghost small" data-reset="llm">Reset to environment</button>
+              </div>
+            </form>
+            <p class="cookie-message" id="llm-message" hidden></p>
+          </section>
+
+          <section class="card settings-card" id="whisper-card">
+            <div class="card-head">
+              <h2>Whisper</h2>
+              <span class="muted small-text" id="whisper-state"></span>
+            </div>
+            <p class="muted small-text">Transcribes videos with faster-whisper. A new model is downloaded into <code>/config/models</code> on the next transcription.</p>
+            <form id="whisper-form" class="settings-form" autocomplete="off">
+              <label class="check wide"><input type="checkbox" data-setting="whisper_enabled">
+                <span>Transcribe videos<small>Off: videos are saved and filed by their description only.</small></span></label>
+              <label>Model
+                <input type="text" data-setting="whisper_model" list="whisper-models" spellcheck="false" required>
+                <datalist id="whisper-models"></datalist>
+                <small>large-v3 is the most accurate, large-v3-turbo much faster; small or medium suit a CPU.</small></label>
+              <label>Device
+                <select data-setting="whisper_device"><option value="auto">Auto (GPU if available)</option><option value="cuda">GPU (CUDA)</option><option value="cpu">CPU</option></select></label>
+              <label>Compute type
+                <select data-setting="whisper_compute_type"></select>
+                <small>Auto: float16 on a GPU, int8 on the CPU. int8_float16 roughly halves VRAM.</small></label>
+              <label>Batch size
+                <input type="number" data-setting="whisper_batch_size" min="1" max="128">
+                <small>Lower it if VRAM is tight; 1 transcribes sequentially.</small></label>
+              <label>Unload after (seconds idle)
+                <input type="number" data-setting="whisper_unload_after" min="0">
+                <small>Frees the GPU for the LLM. 0 keeps the model loaded.</small></label>
+              <div class="actions wide">
+                <button type="submit" class="btn primary small">Save</button>
+                <button type="button" class="btn ghost small" data-reset="whisper">Reset to environment</button>
+              </div>
+            </form>
+            <p class="cookie-message" id="whisper-message" hidden></p>
+          </section>
+        </div>
+
+        <aside class="col-side">
+          <section class="card" id="cookies-card">
+            <h2>YouTube cookies</h2>
+            <div id="cookie-status" class="cookie-status"></div>
+            <div class="cookie-actions">
+              <input type="file" id="cookie-file" accept=".txt,.json,text/plain,application/json" hidden>
+              <button type="button" class="btn ghost small" id="cookie-upload">Upload file</button>
+              <button type="button" class="btn ghost small" id="cookie-paste">Paste</button>
+              <button type="button" class="btn ghost small danger" id="cookie-remove" hidden>Remove</button>
+            </div>
+            <form id="cookie-form" hidden>
+              <textarea id="cookie-text" rows="5" spellcheck="false" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;…   (or Cookie-Editor JSON)"></textarea>
+              <div class="actions">
+                <button type="submit" class="btn primary small">Save cookies</button>
+                <button type="button" class="btn ghost small" id="cookie-cancel">Cancel</button>
+              </div>
+            </form>
+            <p id="cookie-message" class="cookie-message" hidden></p>
+            <details class="hint-text">
+              <summary>How to export</summary>
+              <p class="muted">Log in to YouTube in a private window, export with a cookies.txt extension (Netscape format) or Cookie-Editor (JSON), then close the window - YouTube rotates the cookies of sessions that stay open. Stored in <code>/config</code> (mode 600); values are never shown.</p>
+            </details>
+          </section>
+          <section class="card small-print">
+            <h2>Where settings live</h2>
+            <p class="muted">Environment variables are the defaults. What you change here is stored in <code id="settings-path">/config/settings.json</code> and wins over them; a field marked <em>set here</em> shows what the environment says. Paths, the API token and storage stay environment-only.</p>
+          </section>
+        </aside>
+      </div>
     </section>
   </main>
 

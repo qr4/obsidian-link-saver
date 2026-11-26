@@ -173,13 +173,15 @@ function renderStatus(state) {
 
   const info = [
     ["Vault", state.config.vault],
-    ["LLM", state.config.ollama_model],
+    ["LLM", `${state.config.llm_model} (${PROVIDER_LABELS[state.config.llm_provider] || state.config.llm_provider})`],
     ["Whisper", w.enabled ? `${w.model}${w.loaded ? ` · loaded (${w.device})` : " · idle"}${w.busy ? " · busy" : ""}` : "disabled"],
     ["Cookies", cookieSummary(state.config.cookies)],
     ["Inbox", state.config.inbox_watch ? "watching singlefile_inbox" : "off"],
     ["Waypoints", waypointSummary(state.waypoints)],
     ["Version", state.version],
   ];
+  $("#whisper-state").textContent = !w.enabled ? "off"
+    : `${w.model}${w.loaded ? ` · loaded on ${w.device}` : " · not loaded"}${w.busy ? " · transcribing" : ""}`;
   $("#service-info").replaceChildren(...info.flatMap(([k, v]) => [
     el("dt", {}, k), el("dd", { title: v, class: String(v).startsWith("⚠") ? "warn" : null }, v)]));
 }
@@ -263,13 +265,20 @@ function renderCookies(c) {
   box.replaceChildren(...lines);
 }
 
-function cookieMessage(text, isError = false) {
-  const msg = $("#cookie-message");
+// A message under a form that hides itself again after a while.
+function flash(selector, text, isError = false) {
+  const msg = $(selector);
   msg.textContent = text;
   msg.classList.toggle("error", isError);
   msg.hidden = false;
-  clearTimeout(cookieMessage.timer);
-  cookieMessage.timer = setTimeout(() => { msg.hidden = true; }, isError ? 12000 : 5000);
+  clearTimeout(msg.timer);
+  msg.timer = setTimeout(() => { msg.hidden = true; }, isError ? 15000 : 6000);
+}
+
+const cookieMessage = (text, isError = false) => flash("#cookie-message", text, isError);
+
+function errorDetail(err) {
+  try { return JSON.parse(err.message); } catch { return err.message; }
 }
 
 async function sendCookies(form) {
@@ -280,9 +289,7 @@ async function sendCookies(form) {
     $("#cookie-form").hidden = true;
     $("#cookie-text").value = "";
   } catch (err) {
-    let detail = err.message;
-    try { detail = JSON.parse(detail); } catch { /* plain text */ }
-    cookieMessage(`Not saved: ${detail}`, true);
+    cookieMessage(`Not saved: ${errorDetail(err)}`, true);
   }
 }
 
@@ -315,6 +322,162 @@ function setupCookies() {
     renderCookies(status);
     cookieMessage("Cookies removed.");
   });
+}
+
+/* -------------------------------------------------------------- settings */
+const PROVIDER_LABELS = { ollama: "Ollama", openai: "OpenAI-compatible", anthropic: "Anthropic" };
+let settingsInfo = null;
+
+const settingInputs = (form) => [...form.querySelectorAll("[data-setting]")];
+
+function envText(value) {
+  if (value === null || value === undefined) return "none";
+  if (value === true) return "on";
+  if (value === false) return "off";
+  return value === "" ? "empty" : String(value);
+}
+
+function setOptions(select, values) {
+  if (select.options.length) return;
+  select.replaceChildren(...values.map((v) => el("option", { value: v }, v)));
+}
+
+function fillSettings(info) {
+  settingsInfo = info;
+  setOptions($('[data-setting="whisper_compute_type"]'), info.choices.whisper_compute_type);
+  $("#whisper-models").replaceChildren(...info.choices.whisper_model.map((m) => el("option", { value: m })));
+  for (const input of document.querySelectorAll("#settings [data-setting]")) {
+    const name = input.dataset.setting;
+    const field = info.fields[name];
+    if (!field) continue;
+    if (input.type === "checkbox") input.checked = !!field.value;
+    else if (input.type === "password") input.value = "";
+    else input.value = field.value ?? "";
+    const label = input.closest("label");
+    let note = label.querySelector(".setting-note");
+    if (field.overridden && input.type !== "password") {
+      if (!note) { note = el("small", { class: "setting-note" }); label.append(note); }
+      note.textContent = `Set here · environment: ${envText(field.env)}`;
+    } else if (note) {
+      note.remove();
+    }
+  }
+  const key = info.fields.llm_api_key;
+  $("#llm-key-hint").textContent = key.value
+    ? (key.overridden ? "A key set here is stored. Leave empty to keep it." : "A key from the environment (LLM_API_KEY) is used. Enter one to replace it.")
+    : "None. Hosted APIs need one; Ollama and most local servers don't.";
+  $("#llm-key-clear-wrap").hidden = !(key.value && key.overridden);
+  $("#llm-key-clear").checked = false;
+  $("#llm-effective").textContent = `${PROVIDER_LABELS[info.fields.llm_provider.value] || ""} · ${info.fields.llm_model.value}`;
+  $("#settings-path").textContent = info.path;
+  updateProviderUI();
+}
+
+function updateProviderUI() {
+  if (!settingsInfo) return;
+  const provider = $('[data-setting="llm_provider"]').value;
+  for (const node of document.querySelectorAll("#llm-form .ollama-only")) node.hidden = provider !== "ollama";
+  const url = $('[data-setting="llm_url"]');
+  const fallback = settingsInfo.default_urls[provider] || "";
+  url.placeholder = fallback;
+  $("#llm-url-hint").textContent = provider === "openai"
+    ? `OpenAI, or any server with an OpenAI-compatible API: LM Studio, llama.cpp, vLLM, OpenRouter… Empty uses ${fallback}; a local server needs its /v1 URL, e.g. http://host:1234/v1.`
+    : `Empty uses ${fallback}.`;
+}
+
+function collectSettings(form) {
+  const values = {};
+  for (const input of settingInputs(form)) {
+    values[input.dataset.setting] = input.type === "checkbox" ? input.checked : input.value.trim();
+  }
+  return values;
+}
+
+async function loadSettings() {
+  try {
+    fillSettings(await api("/api/settings"));
+  } catch (err) {
+    flash("#llm-message", `Could not load the settings: ${errorDetail(err)}`, true);
+  }
+}
+
+async function saveSettings(form, messageSel, body) {
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    fillSettings(await api("/api/settings", { method: "PUT", json: body }));
+    flash(messageSel, body.values ? "Saved." : "Back to the environment's settings.");
+    poll();
+  } catch (err) {
+    flash(messageSel, `Not saved: ${errorDetail(err)}`, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function loadModels() {
+  const hint = $("#llm-models-hint");
+  const button = $("#llm-load-models");
+  button.disabled = true;
+  hint.textContent = "Asking the server…";
+  try {
+    const { models, base_url } = await api("/api/settings/llm/models", { method: "POST", json: { values: collectSettings($("#llm-form")) } });
+    $("#llm-models").replaceChildren(...models.map((m) => el("option", { value: m })));
+    hint.textContent = models.length
+      ? `${models.length} model${models.length === 1 ? "" : "s"} at ${base_url}: click the field to pick one.`
+      : `${base_url} lists no models.`;
+    if (models.length) $('[data-setting="llm_model"]').focus();
+  } catch (err) {
+    hint.textContent = errorDetail(err);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function testLLM() {
+  const button = $("#llm-test");
+  button.disabled = true;
+  flash("#llm-message", "Sending a test prompt…");
+  try {
+    const r = await api("/api/settings/llm/test", { method: "POST", json: { values: collectSettings($("#llm-form")) } });
+    const text = `${r.model} answered in ${r.seconds} s: ${r.reply || "(empty)"}`;
+    flash("#llm-message", r.json ? text : `${text}\nThat isn't JSON: the prompts need a model that follows instructions closely.`, !r.json);
+  } catch (err) {
+    flash("#llm-message", `Test failed: ${errorDetail(err)}`, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function setupSettings() {
+  const llmForm = $("#llm-form");
+  const whisperForm = $("#whisper-form");
+  $('[data-setting="llm_provider"]').addEventListener("change", () => {
+    $("#llm-models").replaceChildren();
+    $("#llm-models-hint").textContent = "";
+    updateProviderUI();
+  });
+  $("#llm-load-models").addEventListener("click", loadModels);
+  $("#llm-test").addEventListener("click", testLLM);
+  llmForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveSettings(llmForm, "#llm-message", {
+      values: collectSettings(llmForm),
+      reset: $("#llm-key-clear").checked ? ["llm_api_key"] : [],
+    });
+  });
+  whisperForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveSettings(whisperForm, "#whisper-message", { values: collectSettings(whisperForm), reset: [] });
+  });
+  for (const button of document.querySelectorAll("#settings [data-reset]")) {
+    button.addEventListener("click", () => {
+      const form = button.closest("form");
+      const what = button.dataset.reset === "llm" ? "LLM" : "Whisper";
+      if (!confirm(`Drop the ${what} settings changed here and use the environment's again?`)) return;
+      saveSettings(form, `#${button.dataset.reset}-message`, { reset: settingInputs(form).map((i) => i.dataset.setting) });
+    });
+  }
 }
 
 /* ------------------------------------------------------------------ jobs */
@@ -662,6 +825,7 @@ function setupTabs() {
       document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
       document.querySelectorAll(".view").forEach((v) => { v.hidden = v.id !== tab.dataset.tab; });
       if (tab.dataset.tab === "library") loadLibrary().catch(console.error);
+      if (tab.dataset.tab === "settings") loadSettings();
     });
   }
 }
@@ -670,6 +834,7 @@ function init() {
   setupTabs();
   setupDropzone();
   setupCookies();
+  setupSettings();
   setupStorage();
   $("#submit-form").addEventListener("submit", submitLinks);
   $("#urls").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submitLinks(e); });

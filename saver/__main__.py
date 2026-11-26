@@ -76,7 +76,9 @@ def main(argv=None):
         return 0
 
     if args.command == "save":
+        from . import usersettings
         from .errors import SaveError
+        usersettings.load()
         from .pipeline import Saver
 
         ensure_directories()

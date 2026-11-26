@@ -1,6 +1,6 @@
 # How the LLM is used
 
-Every save asks a local LLM, through [Ollama](https://ollama.com), three
+Every save asks an LLM three
 questions about the saved text: which **tags** fit, what the **summary** is
 (and whether there's anything worth keeping at all), and which **Area note**
 it belongs in. The answers become one bullet in a note under `Areas/`. This
@@ -20,28 +20,47 @@ flowchart LR
     S -. no real content .-> X[Job skipped]
 ```
 
-## Talking to Ollama
+## Talking to the LLM
 
-All requests go through [`call_raw`](../saver/llm.py#L46-L58): one
-`POST /api/generate` per question, no streaming and no chat history, so
-each question stands alone. The request carries the settings from
-[`config.py`](../saver/config.py#L72-L83):
+All requests go through [`complete`](../saver/llm.py#L121-L130): one
+request per question, no streaming and no chat history, so each question
+stands alone. Three backends are built in
+([`_ollama`, `_openai`, `_anthropic`](../saver/llm.py#L81-L115)):
+
+| `LLM_PROVIDER` | Request | For |
+|---|---|---|
+| `ollama` (default) | `POST /api/generate` | A local [Ollama](https://ollama.com) |
+| `openai` | `POST /chat/completions` | OpenAI, or any server with an OpenAI-compatible API: LM Studio, llama.cpp's server, vLLM, LocalAI, OpenRouter, Ollama's own `/v1` |
+| `anthropic` | `POST /v1/messages` | Anthropic's API |
+
+The settings come from [`config.py`](../saver/config.py#L85-L107), and every
+one of them can also be changed in the web UI's **Settings** tab (stored in
+`/config/settings.json`, which wins over the environment). The tab also
+lists the models a server offers and sends a test prompt before you save.
 
 | Setting | Default | Why |
 |---|---|---|
-| `OLLAMA_MODEL` | `qwen3.8:27b` | Any instruction-following model Ollama serves |
-| `OLLAMA_TEMPERATURE` | `0.2` | Low, so the same page gets much the same tags and filing again |
-| `OLLAMA_THINK` | `false` | Skips a reasoning model's thinking pass: the answers are short, structured JSON |
-| `OLLAMA_NUM_CTX` | `32768` | The context window. The area prompt alone is about 22,000 tokens at 1,500 notes (see [Limits](#limits-and-tuning)) |
-| `OLLAMA_TIMEOUT` | `180` | Seconds per request. The first request after a while can be slow: Ollama loads the model first |
+| `LLM_PROVIDER` | `ollama` | Which backend, see above |
+| `LLM_URL` | *(provider default)* | Base URL. Empty means `OLLAMA_URL` for Ollama, `https://api.openai.com/v1` or `https://api.anthropic.com`. For a local OpenAI-compatible server, its `/v1` URL |
+| `LLM_MODEL` | `OLLAMA_MODEL`, `qwen3.8:27b` | Any instruction-following model the server offers |
+| `LLM_API_KEY` | *(empty)* | Sent as `Authorization: Bearer` (`x-api-key` for Anthropic). Hosted APIs need one; local servers usually don't |
+| `LLM_TEMPERATURE` | `0.2` | Low, so the same page gets much the same tags and filing again. `none` sends no temperature, for hosted reasoning models that only accept their default |
+| `LLM_TIMEOUT` | `180` | Seconds per request. The first request after a while can be slow: Ollama loads the model first |
+| `OLLAMA_THINK` | `false` | Ollama only. Skips a reasoning model's thinking pass: the answers are short, structured JSON |
+| `OLLAMA_NUM_CTX` | `32768` | Ollama only. The context window. The area prompt alone is about 22,000 tokens at 1,500 notes (see [Limits](#limits-and-tuning)). Other servers set the context window on their side: make sure it's at least this big |
+
+`OLLAMA_MODEL`, `OLLAMA_TEMPERATURE` and `OLLAMA_TIMEOUT` are the older
+names, still read when the `LLM_` ones are unset. When a request fails, the
+job log shows what the server answered ("model not found", "invalid API
+key").
 
 Every prompt ends with *"Respond with ONLY valid JSON"* and names the shape
 it expects. Models don't always comply, so
-[`extract_json`](../saver/llm.py#L14-L43) is forgiving: it drops
+[`extract_json`](../saver/llm.py#L15-L44) is forgiving: it drops
 `<think>…</think>` blocks, unwraps a ```` ```json ```` fence, takes the
 first `{…}` in the text, and rejects a bare value (a list where an object
 was asked for). When nothing usable comes back,
-[`call`](../saver/llm.py#L66-L72) logs a warning in the job and returns a
+[`call`](../saver/llm.py#L163-L169) logs a warning in the job and returns a
 safe default (no tags, no area), so the save goes on.
 
 ## What text the LLM reads
@@ -65,7 +84,7 @@ Area"), and checks between them whether the job was cancelled.
 
 ### 1. Tags
 
-[`extract_tags`](../saver/llm.py#L75-L99) asks for 3 to 5 broad, reusable
+[`extract_tags`](../saver/llm.py#L172-L196) asks for 3 to 5 broad, reusable
 tags: lowercase, English, words joined by dashes (`machine-learning`), never
 the page title or domain.
 
@@ -83,7 +102,7 @@ The answer is cleaned to a list of strings; anything else becomes "no tags".
 
 ### 2. Summary and content check
 
-[`extract_summary`](../saver/llm.py#L102-L144) asks for 3 to 4 sentences
+[`extract_summary`](../saver/llm.py#L199-L241) asks for 3 to 4 sentences
 for "someone deciding whether to revisit this saved page later": what the
 content covers, what a tutorial teaches, what problem a tool solves.
 
@@ -102,14 +121,14 @@ When the verdict is `false`, the save stops with a
 ([`JobManager._run`](../saver/jobs.py#L195-L218)). The UI then offers
 **Keep anyway**, which retries with `allow_thin`: the verdict is ignored,
 and if the model left the summary empty,
-[`summarize_plain`](../saver/llm.py#L147-L164) asks again without the
+[`summarize_plain`](../saver/llm.py#L244-L261) asks again without the
 verdict. For a video, a rejected save also removes the download it just
 made ([`analyze_download`](../saver/pipeline.py#L128-L138)), since nothing
 would link to it.
 
 ### 3. Area location
 
-[`extract_area`](../saver/llm.py#L188-L217) picks the note the bullet goes
+[`extract_area`](../saver/llm.py#L285-L314) picks the note the bullet goes
 into. It doesn't see the saved text again: it gets the **tags**, the
 **summary**, and the **whole `Areas/` tree**, every folder and note name,
 drawn by [`tree_to_string`](../saver/util.py#L50-L61). The rules it gets:
@@ -166,14 +185,14 @@ refreshed right after ([`write_entry`](../saver/pipeline.py#L122-L126)).
 ## Two more questions
 
 - **A title for the file name.**
-  [`extract_title`](../saver/llm.py#L167-L185) reads the first 3,000
+  [`extract_title`](../saver/llm.py#L264-L282) reads the first 3,000
   characters and returns the document's own title. It's asked for every
   web page, because a page's `<title>` is often the same across a whole
   site, and for PDFs without an embedded title (common for LaTeX papers).
 - **"Is this a git repository?"** For a page on an unknown host, a
   self-hosted Gitea or GitLab for example,
   [`detect_git_repo`](../saver/pipeline.py#L619-L656) asks
-  [`detect_git_repo_prompt`](../saver/llm.py#L220-L238) for the owner and
+  [`detect_git_repo_prompt`](../saver/llm.py#L317-L335) for the owner and
   repository name. It's only asked when the page shows signs of a code
   forge (a forge's name, a clone URL); ordinary articles skip it. The host
   always comes from the page's own address, never from the model, and the
@@ -183,8 +202,8 @@ refreshed right after ([`write_entry`](../saver/pipeline.py#L122-L126)).
 
 - **Prompt size.** The area prompt carries the whole `Areas/` tree, about
   63,000 characters (22,000 tokens) for 1,500 notes, and it grows with the
-  vault. Raise `OLLAMA_NUM_CTX` for a much larger vault, within what your
-  graphics card's memory allows.
+  vault. Raise `OLLAMA_NUM_CTX` (or the context window of your server) for
+  a much larger vault, within what your graphics card's memory allows.
 - **Long pages.** Tags and summary read at most the first 20,000
   characters (about 3,500 words), trimmed in
   [`Saver.analyze`](../saver/pipeline.py#L97-L115); the job log notes it when

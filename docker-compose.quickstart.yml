@@ -22,6 +22,13 @@ services:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
       TZ: ${TZ:-Etc/UTC}
+      # Or another backend: LLM_PROVIDER=openai|anthropic with LLM_MODEL,
+      # LLM_API_KEY (and LLM_URL for a local OpenAI-compatible server).
+      # The Settings tab in the web UI changes these too.
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_URL: ${LLM_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3.8:27b}
       # CPU transcription: a small model keeps it bearable

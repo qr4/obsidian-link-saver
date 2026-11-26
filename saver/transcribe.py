@@ -143,7 +143,9 @@ def _reaper():
     global _model, _model_key
     while True:
         time.sleep(30)
-        if _model is None or time.monotonic() - _last_used < settings.whisper_unload_after:
+        # 0 = keep loaded; it can be set from the Settings tab after this started
+        if _model is None or settings.whisper_unload_after <= 0 \
+                or time.monotonic() - _last_used < settings.whisper_unload_after:
             continue
         if not _gpu.acquire(blocking=False):
             continue  # a transcription is running
