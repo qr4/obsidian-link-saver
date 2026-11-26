@@ -695,10 +695,8 @@ function buildJob(job) {
 }
 
 // Switch to the Library tab, searching for one saved link.
-function openInLibrary(url) {
-  $("#lib-q").value = url;
-  $("#lib-kind").value = "";
-  document.querySelector('.tab[data-tab="library"]').click();
+function openInLibrary(query) {
+  navigate(libraryPath(query, ""));
 }
 
 function updateJob(li, job) {
@@ -719,9 +717,13 @@ function updateJob(li, job) {
   li.querySelector(".time").textContent = active
     ? (job.status === "running" ? duration(job.started_at) : ago(job.created_at))
     : ago(job.finished_at);
-  // Saved links have a library entry (a crawl's pages are listed one by one)
-  li.dataset.url = job.url || "";
-  li.querySelector(".library-link").hidden = !(job.type === "save" && job.status === "done" && job.url);
+  // Saved links have a library entry (a crawl's pages are listed one by one);
+  // a file import is labelled with the uploaded name, so it links through
+  // what the import found (the page's source URL, or the PDF already there).
+  const libraryQuery = job.type === "save" ? (job.status === "done" && job.url)
+    : job.type === "import_file" ? job.options?.library_q : null;
+  li.dataset.url = libraryQuery || "";
+  li.querySelector(".library-link").hidden = !libraryQuery;
   const action = li.querySelector(".action");
   const [name, label, title] = jobActionFor(job, active);
   action.hidden = !name;
@@ -949,16 +951,74 @@ async function loadLibrary(reset = true) {
   if (!total) list.replaceChildren(el("li", { class: "empty muted" }, "Nothing matches."));
 }
 
+/* --------------------------------------------------------------- routing */
+// Each tab has a path (the server serves the page at all three), and the
+// library's search lives in the query string: /library?q=…&kind=…. Changing
+// tab or jumping to an entry pushes a history entry, so Back returns to where
+// you were; typing in the search box only replaces the current one, so Back
+// doesn't step through every keystroke.
+const TAB_PATHS = { dashboard: "/", library: "/library", settings: "/settings" };
+
+function tabForPath(pathname) {
+  const path = pathname.replace(/\/+$/, "") || "/";
+  return Object.keys(TAB_PATHS).find((tab) => TAB_PATHS[tab] === path) || "dashboard";
+}
+
+function libraryPath(q, kind) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (kind) params.set("kind", kind);
+  const query = params.toString();
+  return query ? `/library?${query}` : "/library";
+}
+
+function navigate(path, replace = false) {
+  if (path === location.pathname + location.search) return;
+  history[replace ? "replaceState" : "pushState"](null, "", path);
+  applyRoute();
+}
+
+let shownTab = null;
+let shownSearch = null;  // the q + kind the library list was last loaded for
+function applyRoute() {
+  const tab = tabForPath(location.pathname);
+  document.querySelectorAll(".tab").forEach((t) => {
+    t.classList.toggle("active", t.dataset.tab === tab);
+    t.setAttribute("aria-selected", t.dataset.tab === tab);
+  });
+  document.querySelectorAll(".view").forEach((v) => { v.hidden = v.id !== tab; });
+  if (tab === "library") {
+    const params = new URLSearchParams(location.search);
+    const q = params.get("q") || "", kind = params.get("kind") || "";
+    // Leave the box alone while it already says this (a trailing space the
+    // user is in the middle of typing isn't in the URL).
+    if ($("#lib-q").value.trim() !== q) $("#lib-q").value = q;
+    $("#lib-kind").value = kind;
+    const search = `${q}\n${kind}`;
+    if (shownTab !== "library" || search !== shownSearch) {
+      shownSearch = search;
+      loadLibrary().catch(console.error);
+    }
+  }
+  if (tab === "settings" && shownTab !== "settings") loadSettings();
+  shownTab = tab;
+}
+
+// The search box and kind filter write themselves into the URL.
+function syncLibraryUrl() {
+  navigate(libraryPath($("#lib-q").value.trim(), $("#lib-kind").value), true);
+}
+
 /* ------------------------------------------------------------------ init */
 function setupTabs() {
   for (const tab of document.querySelectorAll(".tab")) {
     tab.addEventListener("click", () => {
-      document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
-      document.querySelectorAll(".view").forEach((v) => { v.hidden = v.id !== tab.dataset.tab; });
-      if (tab.dataset.tab === "library") loadLibrary().catch(console.error);
-      if (tab.dataset.tab === "settings") loadSettings();
+      // Back on the library tab keeps the search it had.
+      navigate(tab.dataset.tab === "library" ? libraryPath($("#lib-q").value.trim(), $("#lib-kind").value)
+        : TAB_PATHS[tab.dataset.tab]);
     });
   }
+  window.addEventListener("popstate", applyRoute);
 }
 
 function init() {
@@ -975,8 +1035,8 @@ function init() {
     poll();
   });
   $("#clear-btn").addEventListener("click", async () => { await api("/api/jobs", { method: "DELETE" }); poll(); });
-  $("#lib-q").addEventListener("input", () => { clearTimeout(libTimer); libTimer = setTimeout(() => loadLibrary().catch(console.error), 250); });
-  $("#lib-kind").addEventListener("change", () => loadLibrary().catch(console.error));
+  $("#lib-q").addEventListener("input", () => { clearTimeout(libTimer); libTimer = setTimeout(syncLibraryUrl, 250); });
+  $("#lib-kind").addEventListener("change", syncLibraryUrl);
   $("#lib-more").addEventListener("click", () => loadLibrary(false).catch(console.error));
   document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });
 
@@ -994,6 +1054,7 @@ function init() {
     history.replaceState(null, "", location.pathname);
     if (params.get("submit")) submitLinks();
   }
+  applyRoute();
   poll();
 }
 

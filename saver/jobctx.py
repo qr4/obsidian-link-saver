@@ -34,6 +34,9 @@ class Reporter:
     def result(self, text: str):
         pass
 
+    def library_entry(self, query: str):
+        pass
+
     def cancelled(self) -> bool:
         return False
 
@@ -109,6 +112,15 @@ def result(text: str):
     reporter = _current.get()
     if reporter:
         reporter.result(text)
+
+
+def library_entry(query: str):
+    """What finds this job's entry in the library search (a URL, or a
+    filename). Lets the UI link a file import - labelled with the uploaded
+    file's name - to the entry it ended up as."""
+    reporter = _current.get()
+    if reporter:
+        reporter.library_entry(query)
 
 
 def check_cancelled():

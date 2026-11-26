@@ -15,6 +15,18 @@ from pathlib import Path
 from typing import Optional
 
 
+# The banners of the common consent tools, by their own ids and classes -
+# never a broad [class*=cookie], which also matches real content.
+DEFAULT_REMOVED_ELEMENTS = ", ".join([
+    "#onetrust-consent-sdk", "#CybotCookiebotDialog", "#usercentrics-root", "#usercentrics-cmp-ui",
+    "#qc-cmp2-container", ".qc-cmp2-container", "#didomi-host", '[id^="sp_message_container"]',
+    ".fc-consent-root", "#cmpbox", "#cmpbox2", ".cc-window", "#cookie-law-info-bar",
+    ".cky-consent-container", "#truste-consent-track", "#consent_blackbar", ".osano-cm-window",
+    "#iubenda-cs-banner", "#cookiescript_injected", "#BorlabsCookieBox", "#cookie-notice",
+    ".cmplz-cookiebanner", ".klaro",
+])
+
+
 def _env(name: str, default: str) -> str:
     value = os.environ.get(name)
     return default if value is None or value == "" else value
@@ -110,6 +122,11 @@ class Settings:
     singlefile_bin: str = field(default_factory=lambda: _env("SINGLEFILE_BIN", "single-file"))
     chromium_bin: str = field(default_factory=lambda: _env("CHROMIUM_BIN", "/usr/bin/chromium"))
     singlefile_timeout: int = field(default_factory=lambda: _int("SINGLEFILE_TIMEOUT", 180))
+    # Removed from every capture: the bundled Chromium has no cookie-banner
+    # blocker, so the consent dialog would otherwise be saved over the page.
+    # "none" turns it off.
+    singlefile_removed_elements: str = field(default_factory=lambda: _env(
+        "SINGLEFILE_REMOVED_ELEMENTS", DEFAULT_REMOVED_ELEMENTS))
 
     # yt-dlp. YouTube increasingly demands a logged-in session; export one
     # with a "cookies.txt" browser extension and drop it at this path.

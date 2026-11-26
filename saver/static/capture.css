@@ -1,0 +1,7 @@
+/* Inserted into every page the server captures (--browser-stylesheet), and so
+   saved with it. Consent tools lock scrolling while their banner is open
+   (overflow: hidden on html/body); the banner itself is removed from the
+   capture (SINGLEFILE_REMOVED_ELEMENTS), and this undoes the lock it leaves. */
+html, body {
+  overflow: auto !important;
+}

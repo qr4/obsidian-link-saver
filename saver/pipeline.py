@@ -32,7 +32,17 @@ from .fetch import (
     pdf_page_count,
     save_single_file,
 )
-from .jobctx import JobCancelled, check_cancelled, current, log, progress, result, span, stage
+from .jobctx import (
+    JobCancelled,
+    check_cancelled,
+    current,
+    library_entry,
+    log,
+    progress,
+    result,
+    span,
+    stage,
+)
 from .urls import (
     GIST_HOST,
     extract_youtube_id,
@@ -44,24 +54,24 @@ from .urls import (
     normalize_url,
     parse_git_repo_url,
 )
-from .util import derive_url_slug_title, move_file, safe_segment, sanitize_filename, unique_destination
-from .vaultnotes import append_area_entry, materialize_area, replace_area_entry, validate_area_path
+from .util import (
+    derive_url_slug_title,
+    move_file,
+    safe_segment,
+    sanitize_filename,
+    unique_destination,
+)
+from .vaultnotes import (
+    append_area_entry,
+    materialize_area,
+    replace_area_entry,
+    validate_area_path,
+)
 
 
 def _job_id():
     reporter = current()
     return reporter.job_id if reporter else None
-
-
-def _park_duplicate(path: Path):
-    """Move an already-saved inbox file aside so the watcher doesn't
-    re-flag it. Uploads are just deleted - nobody looks inside appdata."""
-    if Path(settings.upload_dir).resolve() in path.resolve().parents:
-        path.unlink(missing_ok=True)
-        return
-    dup_dir = path.parent / "_duplicate"
-    dup_dir.mkdir(exist_ok=True)
-    path.rename(unique_destination(dup_dir, path.name))
 
 
 # The start of a video's transcript is what the LLM files it by: about the
@@ -228,7 +238,7 @@ class Saver:
         repo_label = f"{host}/{owner}/{repo}" if repo else f"{host}/{owner}"
 
         # A bare '.git' URL isn't a browsable page - strip it for tagging.
-        browse_url = url[:-4] if url.endswith(".git") else url
+        browse_url = url.removesuffix(".git")
         stage("Reading repo page")
         try:
             html = fetch_page_html(browse_url)
@@ -276,7 +286,7 @@ class Saver:
         stage("Listing repositories")
         try:
             repos = gitrepos.fetch_github_repos(owner)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise SaveError(f"could not list repos for {owner}: {e}") from e
 
         repos = [r for r in repos if not r.get("fork")]
@@ -328,7 +338,7 @@ class Saver:
             stage("Downloading PDF")
             try:
                 data = fetch_pdf(url)
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 raise SaveError(f"could not download PDF: {e}") from e
 
         stage("Extracting text")
@@ -376,7 +386,7 @@ class Saver:
         stage("Fetching video metadata")
         try:
             meta = media.fetch_youtube_metadata(url)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise SaveError(f"could not fetch YouTube metadata: {e}") from e
 
         title = meta["title"]
@@ -422,7 +432,7 @@ class Saver:
         stage("Fetching talk metadata")
         try:
             meta = media.fetch_ccc_metadata(url)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise SaveError(f"could not fetch media.ccc.de metadata: {e}") from e
 
         title, talk_id = meta["title"], meta["id"] or "unknown"
@@ -467,7 +477,7 @@ class Saver:
         stage("Listing channel videos")
         try:
             meta = media.fetch_youtube_channel_metadata(url)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             raise SaveError(f"could not fetch YouTube channel metadata: {e}") from e
 
         title = meta["title"]
@@ -538,9 +548,11 @@ class Saver:
         """Import a SingleFile capture (browser extension + Companion, synced
         into the inbox, or uploaded through the UI). Recovers the source URL
         from the file's own header and routes through save() as normal.
-        Afterwards the file is either consumed (renamed into the dump),
-        deleted (a youtube/git/pdf handler fetched fresh and never needed
-        it) or parked in _duplicate/ (already saved).
+        Afterwards the file is either consumed (renamed into the dump) or
+        deleted: a youtube/git/pdf handler fetched fresh and never needed
+        it, or the page was already saved. Duplicates are not kept - the
+        vault already has the page, and a parked copy would only be synced
+        to every device.
 
         Imports always run with allow_thin: a file only lands here because
         someone hit Save on that exact page, which is a stronger signal than
@@ -562,17 +574,13 @@ class Saver:
             result(f"Dropped {path.name}: {e}")
             return "content_free"
 
-        if not path.exists():
-            return outcome
-        if outcome == "dispatched_other":
-            path.unlink()
-            return outcome
-        # skipped_dedupe on a generic page: save_generic never consumed the
-        # file - move it aside so the inbox watcher doesn't re-flag it.
-        _park_duplicate(path)
+        library_entry(url)
+        # dispatched_other, or skipped_dedupe on a generic page (save_generic
+        # never consumed the file): either way the vault doesn't need it.
+        path.unlink(missing_ok=True)
         return outcome
 
-    def import_pdf_file(self, path: Path, source_url: str = None, force: bool = False) -> str:
+    def import_pdf_file(self, path: Path, source_url: str | None = None, force: bool = False) -> str:
         """Import a raw PDF that is already on disk. The bytes go straight to
         save_pdf rather than a URL being re-fetched - the local copy may be
         the only one left. `source_url` records the real origin when known;
@@ -592,7 +600,8 @@ class Saver:
             log(f"IMPORT: {path.name} is byte-identical to {twin.name}, already in the vault "
                 f"- not saving it twice (use force to override)")
             if not in_pdf_dir:
-                _park_duplicate(path)
+                path.unlink(missing_ok=True)
+            library_entry(twin.name)
             result(f"Already in the vault -> Dumps/pdf/{twin.name}")
             return "skipped_dedupe"
 
@@ -606,12 +615,11 @@ class Saver:
             result(f"Left {path.name} in place: {e}")
             return "content_free"
 
+        library_entry(url)
         if in_pdf_dir:
             return outcome
-        if outcome == "skipped_dedupe":
-            _park_duplicate(path)
-            return outcome
-        # save_pdf wrote its own copy into pdf_dir; the upload is redundant.
+        # save_pdf wrote its own copy into pdf_dir, or the vault already had
+        # one (skipped_dedupe): either way the upload is redundant.
         path.unlink(missing_ok=True)
         return outcome
 
@@ -648,8 +656,7 @@ class Saver:
             return None, None, None
 
         host = urlparse(url).netloc.lower()
-        if host.startswith("www."):
-            host = host[4:]
+        host = host.removeprefix("www.")
         try:
             response = requests.head(f"https://{host}/{owner}/{repo}", timeout=10,
                                      headers={"User-Agent": settings.http_user_agent}, allow_redirects=True)
@@ -663,7 +670,7 @@ class Saver:
         return host, owner, repo
 
     def save(self, url: str, force: bool = False, precaptured=None, allow_thin: bool = False,
-             precaptured_pdf: bytes = None, report: bool = True) -> str:
+             precaptured_pdf: bytes | None = None, report: bool = True) -> str:
         """Returns an outcome string - "consumed" (save_generic used
         precaptured), "dispatched_other" (youtube/git/pdf handled it,
         precaptured untouched), or "skipped_dedupe" (already saved).

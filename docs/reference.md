@@ -234,6 +234,7 @@ environment* drops them again.
 | `WHISPER_COMPUTE_TYPE` | `auto` | `float16` on GPU, `int8` on CPU; `int8_float16` halves VRAM |
 | `WHISPER_BATCH_SIZE` | `8` | Lower it if VRAM is tight |
 | `WHISPER_UNLOAD_AFTER` | `300` | Idle seconds before the model is freed (0 = keep loaded) |
+| `SINGLEFILE_REMOVED_ELEMENTS` | the common consent tools' banners | CSS selectors (comma separated) removed from every page the server captures, since its Chromium has no cookie-banner blocker. `none` turns it off. Captures from your own browser use the SingleFile extension's settings instead |
 | `INBOX_WATCH` / `INBOX_POLL_SECONDS` | `true` / `3` | Import files from `Dumps/singlefile_inbox` |
 | `YTDLP_AUTO_UPDATE` | `false` | `pip install -U yt-dlp` on every start (the compose file enables it) |
 | `YTDLP_EXTRA_ARGS` | `--js-runtimes node` | Extra yt-dlp flags |

@@ -30,6 +30,7 @@ class JobReporter(Reporter):
         self.job_id = job_id
         self.db = get_db()
         self.result_text = None
+        self.library_q = None
         self._last_write = 0.0
         self._pending = None
 
@@ -57,6 +58,9 @@ class JobReporter(Reporter):
     def result(self, text: str):
         self.result_text = text
         self.db.update_job(self.job_id, result=text)
+
+    def library_entry(self, query: str):
+        self.library_q = query
 
     def cancelled(self) -> bool:
         return self.manager.cancel_requested(self.job_id)
@@ -215,6 +219,8 @@ class JobManager:
                 log(traceback.format_exc(limit=8))
             finally:
                 reporter.flush()
+        if reporter.library_q and status in ("done", "skipped"):
+            db.update_job(job["id"], options={**job["options"], "library_q": reporter.library_q})
         db.finish_job(job["id"], status, result=reporter.result_text, error=error)
 
     def _dispatch(self, job: dict):

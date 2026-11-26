@@ -117,6 +117,10 @@ def pdf_import_source_url(data: bytes, path: Path) -> str:
     return f"local://pdf-import/{digest}/{slug}.pdf"
 
 
+# Undoes the scroll lock a removed consent banner leaves behind.
+CAPTURE_STYLESHEET = Path(__file__).parent / "static" / "capture.css"
+
+
 def save_single_file(url: str, dest_dir: Path, filename: str) -> Path:
     """Render the page with the SingleFile CLI and the bundled Chromium into
     dest_dir/filename: a full-fidelity, JS-rendered, self-contained snapshot.
@@ -133,6 +137,10 @@ def save_single_file(url: str, dest_dir: Path, filename: str) -> Path:
         "--browser-args", json.dumps(["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"]),
         "--filename-conflict-action", "overwrite",
     ]
+    removed = settings.singlefile_removed_elements.strip()
+    if removed and removed.lower() != "none":
+        cmd += ["--removed-elements-selector", removed,
+                "--browser-stylesheet", str(CAPTURE_STYLESHEET)]
     try:
         result = proc.run(cmd, timeout=settings.singlefile_timeout)
     except FileNotFoundError:

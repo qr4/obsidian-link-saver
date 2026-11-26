@@ -117,7 +117,8 @@ def test_import_captured_file(env, capture, tmp_path):
 
     path.write_text(PAGE, encoding="utf-8")
     assert Saver().import_captured_file(path) == "skipped_dedupe"
-    assert (inbox / "_duplicate" / path.name).exists()
+    assert not path.exists()  # a duplicate is dropped, not parked
+    assert not (inbox / "_duplicate").exists()
 
 
 def make_pdf(title="A Paper"):
@@ -139,11 +140,12 @@ def test_import_pdf_without_text_layer(env, tmp_path):
     rows, total = env["db"].list_entries(kind="pdf")
     assert total == 1 and rows[0]["url"].startswith("local://pdf-import/") and rows[0]["filename"] == "A Paper.pdf"
 
-    # byte-identical re-upload is parked, not saved twice
+    # byte-identical re-upload is dropped, not saved twice
     again = tmp_path / "copy.pdf"
     again.write_bytes(make_pdf())
     assert Saver().import_pdf_file(again) == "skipped_dedupe"
-    assert (tmp_path / "_duplicate" / "copy.pdf").exists()
+    assert not again.exists() and not (tmp_path / "_duplicate").exists()
+    assert stored.exists()
 
 
 def test_not_a_pdf(env, tmp_path):
@@ -181,7 +183,7 @@ def test_upload_moves_across_filesystems(env, capture, monkeypatch):
     entry = env["db"].get_entry("url:blog.example.com/posts/scraping")
     assert (env["vault"] / "Dumps" / "single_page" / entry["filename"]).read_text(encoding="utf-8") == PAGE
 
-    # a duplicate upload is deleted, not parked inside appdata
+    # a duplicate upload is deleted
     upload.write_text(PAGE, encoding="utf-8")
     assert Saver().import_captured_file(upload) == "skipped_dedupe"
     assert not upload.exists() and not (settings.upload_dir / "_duplicate").exists()
@@ -222,3 +224,29 @@ def test_long_text_is_trimmed_before_the_llm(env, monkeypatch):
                         lambda text, require_content=True: seen.append(len(text)) or "s")
     Saver().analyze("word " * 100_000)
     assert seen == [saver_mod.ANALYZE_CHARS] * 2
+
+
+def test_captures_drop_cookie_banners(monkeypatch, tmp_path):
+    """The server's Chromium has no banner blocker: SingleFile removes the
+    consent tools' banners itself and undoes their scroll lock."""
+    from types import SimpleNamespace
+
+    from saver.config import settings
+
+    calls = []
+
+    def fake_run(cmd, timeout):
+        calls.append(cmd)
+        (tmp_path / "p.html").write_text("<html></html>")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(fetch.proc, "run", fake_run)
+    fetch.save_single_file("https://example.com", tmp_path, "p.html")
+    cmd = calls[-1]
+    assert "#onetrust-consent-sdk" in cmd[cmd.index("--removed-elements-selector") + 1]
+    stylesheet = cmd[cmd.index("--browser-stylesheet") + 1]
+    assert "overflow: auto" in open(stylesheet).read()
+
+    monkeypatch.setattr(settings, "singlefile_removed_elements", "none")
+    fetch.save_single_file("https://example.com", tmp_path, "p.html")
+    assert "--removed-elements-selector" not in calls[-1] and "--browser-stylesheet" not in calls[-1]

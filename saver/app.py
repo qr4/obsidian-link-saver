@@ -102,7 +102,11 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
 
     auth = [Depends(require_token)]
 
+    # The page routes itself (app.js): each tab has its own path, so a
+    # reload or a shared link lands on the same view.
     @app.get("/", include_in_schema=False)
+    @app.get("/library", include_in_schema=False)
+    @app.get("/settings", include_in_schema=False)
     def index():
         return FileResponse(STATIC_DIR / "index.html")
 

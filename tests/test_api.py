@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from saver import jobs as jobs_mod
 from saver.app import create_app
 from saver.config import settings
-from saver.jobctx import log, progress, result, stage
+from saver.jobctx import library_entry, log, progress, result, stage
 from saver.vaultlock import vault_lock
 
 
@@ -113,6 +113,27 @@ def test_upload_queues_import(client, env, monkeypatch):
     assert results[1]["status"] == "invalid"
     assert wait_for(client, results[0]["job_id"])["status"] == "done"
     assert imported and imported[0].endswith("-page.html")
+
+
+def test_import_job_records_its_library_entry(client, monkeypatch):
+    """An upload is labelled with the file's name; the job keeps what finds
+    the entry it became, so the UI can link it to the library."""
+    def fake_import(self, path):
+        library_entry("https://blog.example.com/a")
+        return "consumed"
+
+    monkeypatch.setattr(jobs_mod.Saver, "import_captured_file", fake_import)
+    files = [("files", ("page.html", b"<html></html>", "text/html"))]
+    job_id = client.post("/api/upload", files=files).json()["results"][0]["job_id"]
+    job = wait_for(client, job_id)
+    assert job["status"] == "done" and job["options"]["library_q"] == "https://blog.example.com/a"
+
+
+def test_tabs_have_their_own_paths(client):
+    page = client.get("/").text
+    for path in ("/library", "/settings", "/library?q=x&kind=pdf"):
+        response = client.get(path)
+        assert response.status_code == 200 and response.text == page
 
 
 def test_token_required(client):
