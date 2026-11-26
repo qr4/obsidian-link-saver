@@ -364,11 +364,43 @@ function setOptions(select, values) {
   select.replaceChildren(...values.map((v) => el("option", { value: v }, v)));
 }
 
-function fillSettings(info) {
+// A model field: a dropdown of known names, plus "Other…", which shows the
+// text field (the setting itself) to type any name. A value the list
+// doesn't have stays selectable, marked as such.
+const OTHER = "\u0000other";
+
+function setPicker(select, input, names, unlistedNote = "not in the list") {
+  const current = input.value.trim();
+  const list = [...new Set(names)];
+  const options = list.map((n) => el("option", { value: n }, n));
+  if (current && !list.includes(current)) {
+    options.unshift(el("option", { value: current }, unlistedNote ? `${current} (${unlistedNote})` : current));
+  }
+  if (!current) options.unshift(el("option", { value: "", disabled: true }, "Choose a model…"));
+  options.push(el("option", { value: OTHER }, "Other…"));
+  select.replaceChildren(...options);
+  select.value = input.hidden ? current : OTHER;
+}
+
+function setupPicker(select, input) {
+  select.addEventListener("change", () => {
+    if (select.value === OTHER) {
+      input.hidden = false;
+      input.focus();
+      input.select();
+    } else {
+      input.value = select.value;
+      input.hidden = true;
+    }
+  });
+}
+
+// Puts the server's values into the forms. After a save, only into the
+// saved form (root), so unsaved edits in the other card survive.
+function fillSettings(info, root = $("#settings")) {
   settingsInfo = info;
   setOptions($('[data-setting="whisper_compute_type"]'), info.choices.whisper_compute_type);
-  $("#whisper-models").replaceChildren(...info.choices.whisper_model.map((m) => el("option", { value: m })));
-  for (const input of document.querySelectorAll("#settings [data-setting]")) {
+  for (const input of root.querySelectorAll("[data-setting]")) {
     const name = input.dataset.setting;
     const field = info.fields[name];
     if (!field) continue;
@@ -392,6 +424,16 @@ function fillSettings(info) {
   $("#llm-key-clear").checked = false;
   $("#llm-effective").textContent = `${PROVIDER_LABELS[info.fields.llm_provider.value] || ""} · ${info.fields.llm_model.value}`;
   $("#settings-path").textContent = info.path;
+  if (root.contains($("#whisper-model-pick"))) {
+    $('[data-setting="whisper_model"]').hidden = true;
+    setPicker($("#whisper-model-pick"), $('[data-setting="whisper_model"]'), info.choices.whisper_model);
+  }
+  if (root.contains($("#llm-model-pick"))) {
+    const input = $('[data-setting="llm_model"]');
+    input.hidden = true;
+    // keep the server's list (if loaded), just select the saved model in it
+    setPicker($("#llm-model-pick"), input, llmModels || [], llmModels ? "not offered by this server" : null);
+  }
   updateProviderUI();
 }
 
@@ -420,14 +462,16 @@ async function loadSettings() {
     fillSettings(await api("/api/settings"));
   } catch (err) {
     flash("#llm-message", `Could not load the settings: ${errorDetail(err)}`, true);
+    return;
   }
+  loadModels();
 }
 
 async function saveSettings(form, messageSel, body) {
   const button = form.querySelector('button[type="submit"]');
   button.disabled = true;
   try {
-    fillSettings(await api("/api/settings", { method: "PUT", json: body }));
+    fillSettings(await api("/api/settings", { method: "PUT", json: body }), form);
     flash(messageSel, body.values ? "Saved." : "Back to the environment's settings.");
     poll();
   } catch (err) {
@@ -437,22 +481,30 @@ async function saveSettings(form, messageSel, body) {
   }
 }
 
+// Fills the model dropdown from the (possibly unsaved) provider, URL and
+// key. Only the latest request counts when several overlap.
+let modelsRequest = 0;
+let llmModels = null;  // the server's list, null until (or unless) it loaded
+
 async function loadModels() {
   const hint = $("#llm-models-hint");
-  const button = $("#llm-load-models");
-  button.disabled = true;
-  hint.textContent = "Asking the server…";
+  const select = $("#llm-model-pick");
+  const input = $('[data-setting="llm_model"]');
+  const request = ++modelsRequest;
+  hint.textContent = "Asking the server for its models…";
   try {
     const { models, base_url } = await api("/api/settings/llm/models", { method: "POST", json: { values: collectSettings($("#llm-form")) } });
-    $("#llm-models").replaceChildren(...models.map((m) => el("option", { value: m })));
+    if (request !== modelsRequest) return;
+    llmModels = models;
+    setPicker(select, input, models, "not offered by this server");
     hint.textContent = models.length
-      ? `${models.length} model${models.length === 1 ? "" : "s"} at ${base_url}: click the field to pick one.`
-      : `${base_url} lists no models.`;
-    if (models.length) $('[data-setting="llm_model"]').focus();
+      ? `${models.length} model${models.length === 1 ? "" : "s"} at ${base_url}.`
+      : `${base_url} lists no models. Pick \u201cOther\u2026\u201d to enter a name.`;
   } catch (err) {
-    hint.textContent = errorDetail(err);
-  } finally {
-    button.disabled = false;
+    if (request !== modelsRequest) return;
+    llmModels = null;
+    setPicker(select, input, [], null);
+    hint.textContent = `${errorDetail(err)} Pick \u201cOther\u2026\u201d to enter a name.`;
   }
 }
 
@@ -475,10 +527,15 @@ function setupSettings() {
   const llmForm = $("#llm-form");
   const whisperForm = $("#whisper-form");
   $('[data-setting="llm_provider"]').addEventListener("change", () => {
-    $("#llm-models").replaceChildren();
-    $("#llm-models-hint").textContent = "";
     updateProviderUI();
+    loadModels();
   });
+  // a different server or key offers different models
+  for (const name of ["llm_url", "llm_api_key"]) {
+    $(`[data-setting="${name}"]`).addEventListener("change", loadModels);
+  }
+  setupPicker($("#llm-model-pick"), $('[data-setting="llm_model"]'));
+  setupPicker($("#whisper-model-pick"), $('[data-setting="whisper_model"]'));
   $("#llm-load-models").addEventListener("click", loadModels);
   $("#llm-test").addEventListener("click", testLLM);
   llmForm.addEventListener("submit", (event) => {

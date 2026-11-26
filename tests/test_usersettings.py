@@ -120,6 +120,13 @@ def test_api(clean_env, monkeypatch):
     r = client.post("/api/settings/llm/test", json={"values": {}})
     assert r.status_code == 502 and "invalid x-api-key" in r.json()["detail"]
 
+    def unreachable(cfg):
+        raise llm.requests.ConnectionError("HTTPConnectionPool(host='x', port=9): Max retries exceeded")
+
+    monkeypatch.setattr(llm, "list_models", unreachable)
+    r = client.post("/api/settings/llm/models", json={"values": {}})
+    assert r.status_code == 502 and "can't reach" in r.json()["detail"] and "Pool" not in r.json()["detail"]
+
     monkeypatch.setattr(llm, "list_models", lambda cfg: ["a", "b"])
     r = client.post("/api/settings/llm/models", json={"values": {"llm_model": ""}})
     assert r.json()["models"] == ["a", "b"]

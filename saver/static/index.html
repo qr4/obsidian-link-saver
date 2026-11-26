@@ -179,10 +179,11 @@
                 <small id="llm-url-hint">Empty uses the provider's default.</small></label>
               <label class="wide">Model
                 <span class="input-row">
-                  <input type="text" data-setting="llm_model" list="llm-models" spellcheck="false" required>
-                  <button type="button" class="btn ghost small" id="llm-load-models">Load models</button>
+                  <select id="llm-model-pick"></select>
+                  <button type="button" class="btn ghost small" id="llm-load-models" title="Ask the server for its models again">Refresh list</button>
                 </span>
-                <datalist id="llm-models"></datalist>
+                <input type="text" class="picker-custom" data-setting="llm_model" spellcheck="false" required hidden
+                       placeholder="The model's name, as the server knows it">
                 <small id="llm-models-hint"></small></label>
               <label class="wide">API key
                 <input type="password" data-setting="llm_api_key" autocomplete="new-password" spellcheck="false">
@@ -218,8 +219,9 @@
               <label class="check wide"><input type="checkbox" data-setting="whisper_enabled">
                 <span>Transcribe videos<small>Off: videos are saved and filed by their description only.</small></span></label>
               <label>Model
-                <input type="text" data-setting="whisper_model" list="whisper-models" spellcheck="false" required>
-                <datalist id="whisper-models"></datalist>
+                <select id="whisper-model-pick"></select>
+                <input type="text" class="picker-custom" data-setting="whisper_model" spellcheck="false" required hidden
+                       placeholder="A faster-whisper model name, Hugging Face repo or path">
                 <small>large-v3 is the most accurate, large-v3-turbo much faster; small or medium suit a CPU.</small></label>
               <label>Device
                 <select data-setting="whisper_device"><option value="auto">Auto (GPU if available)</option><option value="cuda">GPU (CUDA)</option><option value="cpu">CPU</option></select></label>

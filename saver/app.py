@@ -389,6 +389,14 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
         except usersettings.SettingsError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+    def _llm_failure(cfg, e) -> str:
+        """What went wrong talking to the LLM server, in one readable line."""
+        if isinstance(e, requests.ConnectionError):
+            return f"can't reach {cfg.llm_base_url}: is the server running, and the URL right?"
+        if isinstance(e, requests.Timeout):
+            return f"no answer from {cfg.llm_base_url} within {cfg.llm_timeout} s"
+        return f"{cfg.llm_base_url}: {e}"
+
     def _candidate(values):
         try:
             return usersettings.candidate(values)
@@ -403,7 +411,7 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
         try:
             return {"models": llm.list_models(cfg), "base_url": cfg.llm_base_url}
         except (llm.LLMError, requests.RequestException, ValueError) as e:
-            raise HTTPException(status_code=502, detail=f"could not list models at {cfg.llm_base_url}: {e}")
+            raise HTTPException(status_code=502, detail=f"Could not list the models: {_llm_failure(cfg, e)}.")
 
     @app.post("/api/settings/llm/test", dependencies=auth)
     def llm_test(body: SettingsTry):
@@ -414,7 +422,7 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
         try:
             reply = llm.complete('Reply with ONLY this JSON, nothing else: {"ok": true}', cfg)
         except (llm.LLMError, requests.RequestException, ValueError) as e:
-            raise HTTPException(status_code=502, detail=f"{cfg.llm_provider} at {cfg.llm_base_url}: {e}")
+            raise HTTPException(status_code=502, detail=_llm_failure(cfg, e))
         return {"ok": True, "json": llm.extract_json(reply) is not None, "reply": reply.strip()[:300],
                 "seconds": round(time.monotonic() - started, 1), "model": cfg.llm_model}
 

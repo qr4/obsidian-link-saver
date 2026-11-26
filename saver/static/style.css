@@ -286,7 +286,8 @@ textarea:focus, input:focus, select:focus { outline: 2px solid var(--accent); ou
 .settings-form .wide { grid-column: 1 / -1; }
 .settings-form .actions { margin-top: 2px; }
 .input-row { display: flex; gap: 8px; align-items: center; }
-.input-row input { flex: 1; min-width: 0; }
+.input-row input, .input-row select { flex: 1; min-width: 0; }
+.picker-custom { margin-top: 6px; }
 .input-row .btn { flex: none; white-space: nowrap; }
 .setting-note { color: var(--accent-strong) !important; }
 .settings-card .cookie-message { white-space: pre-wrap; word-break: break-word; }
