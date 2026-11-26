@@ -216,13 +216,17 @@ function renderStorage(st) {
     const lines = [line("ok", `Offsite store at ${st.blob_dir}`)];
     const u = st.usage;
     if (u?.error) lines.push(line("warn", `Could not measure the store: ${u.error}`));
-    else if (u?.bytes != null) lines.push(line("", `Holds ${formatBytes(u.bytes)}${u.counting ? " · recounting…" : ""}`));
-    else if (u?.counting) lines.push(line("", "Measuring the store…"));
+    else if (u?.bytes != null) {
+      const holds = line("", `Holds ${formatBytes(u.bytes)}${u.counting ? " · recounting…" : ""}`);
+      if (u.counted_at) holds.title = `Measured in full ${ago(new Date(u.counted_at * 1000).toISOString())}; kept up to date by every save since`;
+      lines.push(holds);
+    } else if (u?.counting) lines.push(line("", "Measuring the store for the first time (minutes for a large one)…"));
     if (st.free != null) lines.push(line("", `${formatBytes(st.free)} free of ${formatBytes(st.total)}`));
     lines.push(line("", `Links use ${st.public_url}`));
     box.replaceChildren(...lines);
   }
   renderStorageUsage(st.enabled && !st.problem ? st.usage : null);
+  $("#store-recount").disabled = !!st?.usage?.counting;
 }
 
 const STORE_CATEGORIES = [["youtube", "YouTube", "video"], ["video", "Talks", "video"], ["git", "Repos", "repo"]];
@@ -259,8 +263,18 @@ async function updateRepos() {
   poll();
 }
 
+async function recountStore() {
+  try {
+    await api("/api/storage/recount", { method: "POST" });
+  } catch (err) {
+    alert(err.message);
+  }
+  poll();
+}
+
 function setupStorage() {
   $("#repos-update").addEventListener("click", updateRepos);
+  $("#store-recount").addEventListener("click", recountStore);
 }
 
 /* --------------------------------------------------------------- cookies */

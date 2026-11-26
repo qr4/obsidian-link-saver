@@ -560,7 +560,20 @@ def test_rejected_resave_keeps_an_existing_download(store, env, monkeypatch):
 # ---------------------------------------------------------------------------
 # usage statistic
 # ---------------------------------------------------------------------------
-def test_usage_counts_bytes_videos_and_repos(store):
+def wait_for_count(timeout=5):
+    deadline = time.time() + timeout
+    while blobs._counting and time.time() < deadline:
+        time.sleep(0.01)
+    assert not blobs._counting
+
+
+@pytest.fixture
+def fresh_count(monkeypatch):
+    monkeypatch.setattr(blobs, "_counting", False)
+    monkeypatch.setattr(blobs, "_count_error", None)
+
+
+def fill_store(store):
     make_video_dir(store / "youtube" / "chan" / "A [abc123def45]")
     make_video_dir(store / "youtube" / "chan" / "B [bcd123def45]", stem="B [bcd123def45]")
     repo = store / "git" / "github.com" / "owner" / "repo"
@@ -570,50 +583,72 @@ def test_usage_counts_bytes_videos_and_repos(store):
     (store / "stray.bin").write_bytes(b"y" * 10)
     (store / "youtube" / "link.mkv").symlink_to(store / "stray.bin")  # not followed, not counted
 
-    u = blobs.compute_usage()
+
+def test_first_usage_counts_the_store_once_in_the_background(store, env, fresh_count):
+    fill_store(store)
+    assert blobs.usage()["counting"] is True  # nothing to show until the first count is done
+    wait_for_count()
+    u = blobs.usage()
     yt = u["categories"]["youtube"]
     assert yt["items"] == 2 and yt["bytes"] > 2 * 256 * 1024
     assert u["categories"]["git"] == {"bytes": 1000 + len("ref: refs/heads/main\n"), "items": 1}
     assert u["categories"]["video"] == {"bytes": 0, "items": 0}
-    assert u["other_bytes"] == 10
+    assert u["other_bytes"] == 10 and u["counting"] is False and u["counted_at"]
     assert u["bytes"] == yt["bytes"] + u["categories"]["git"]["bytes"] + 10
+    # one row per unit: the repo, the channel, the stray file
+    rows = env["db"]._rows("SELECT category, unit FROM blob_usage ORDER BY category, unit")
+    assert rows == [{"category": "git", "unit": "github.com/owner/repo"},
+                    {"category": "other", "unit": "stray.bin"},
+                    {"category": "youtube", "unit": "chan"}]
 
 
-def test_usage_is_counted_in_the_background_and_cached(store, monkeypatch):
-    calls = []
-    monkeypatch.setattr(blobs, "_usage", {"result": None, "computed_at": 0.0, "stale": True, "running": False})
-    monkeypatch.setattr(blobs, "compute_usage", lambda: calls.append(1) or {"bytes": 5, "categories": {}})
-    first = blobs.usage()
-    deadline = time.time() + 5
-    while blobs._usage["running"] and time.time() < deadline:
-        time.sleep(0.01)
-    assert first["counting"] is True or first.get("bytes") == 5
-    assert blobs.usage() == {"counting": False, "bytes": 5, "categories": {}}
-    assert len(calls) == 1
-    blobs.invalidate_usage()  # a save changed the store, but it was just counted
+def test_after_the_first_count_only_writes_recount_and_only_their_folder(store, env, fresh_count, monkeypatch):
+    fill_store(store)
     blobs.usage()
-    assert len(calls) == 1
+    wait_for_count()
+    before = blobs.usage()
 
+    # a restart: the totals come from the database, no walk
+    monkeypatch.setattr(blobs, "_full_count", lambda: pytest.fail("walked the whole store"))
+    assert blobs.usage()["bytes"] == before["bytes"]
+
+    walked = []
+    real_measure = blobs._measure
+    monkeypatch.setattr(blobs, "_measure", lambda c, p: walked.append(p) or real_measure(c, p))
+    make_video_dir(store / "youtube" / "other-chan" / "C [cde123def45]", stem="C [cde123def45]")
+    blobs.record_write("youtube", "other-chan/C [cde123def45]")
+    assert walked == [store / "youtube" / "other-chan"]
+    after = blobs.usage()
+    assert after["categories"]["youtube"]["items"] == 3
+    assert after["bytes"] > before["bytes"] + 256 * 1024
+
+    # a folder that's gone drops out
+    import shutil
+    shutil.rmtree(store / "git" / "github.com" / "owner" / "repo")
+    blobs.record_write("git", "github.com/owner/repo")
+    assert blobs.usage()["categories"]["git"] == {"bytes": 0, "items": 0}
+
+
+def test_recount_drops_what_is_gone_and_keeps_newer_writes(store, env, fresh_count):
+    fill_store(store)
+    env["db"].set_blob_unit("youtube", "deleted-chan", 999, 9, time.time() - 3600)
+    assert blobs.recount() is True
+    wait_for_count()
+    assert "deleted-chan" not in {r["unit"] for r in env["db"]._rows("SELECT unit FROM blob_usage")}
+    assert blobs.usage()["categories"]["youtube"]["items"] == 2
+
+
+def test_no_store_no_usage(env, fresh_count):
     settings.update(blob_dir="")
-    assert blobs.usage() is None
+    assert blobs.usage() is None and blobs.recount() is False
+    blobs.record_write("git", "a/b/c")  # no-op
 
 
-def test_storage_status_reports_usage(store, monkeypatch):
+def test_storage_endpoints(store, env, fresh_count, monkeypatch):
     from saver.app import create_app
+    client = TestClient(create_app(run_lifecycle=False))
     monkeypatch.setattr(blobs, "usage", lambda: {"counting": False, "bytes": 42})
-    status = TestClient(create_app(run_lifecycle=False)).get("/api/storage").json()
-    assert status["usage"] == {"counting": False, "bytes": 42}
-
-
-def test_usage_recounts_only_after_a_write(store, monkeypatch):
-    calls = []
-    monkeypatch.setattr(blobs, "_usage", {"result": {"bytes": 1}, "computed_at": time.monotonic() - 3600,
-                                          "stale": False, "running": False})
-    monkeypatch.setattr(blobs, "compute_usage", lambda: calls.append(1) or {"bytes": 2})
-    assert blobs.usage()["bytes"] == 1 and not calls  # an hour old, but nothing was written
-    blobs.invalidate_usage()
-    blobs.usage()
-    deadline = time.time() + 5
-    while blobs._usage["running"] and time.time() < deadline:
-        time.sleep(0.01)
-    assert calls == [1] and blobs.usage()["bytes"] == 2
+    assert client.get("/api/storage").json()["usage"] == {"counting": False, "bytes": 42}
+    started = []
+    monkeypatch.setattr(blobs, "recount", lambda: started.append(1) or True)
+    assert client.post("/api/storage/recount").json()["started"] is True and started == [1]

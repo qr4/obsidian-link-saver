@@ -313,28 +313,28 @@ def update_repos():
         else:
             unchanged += 1
         host, owner, repo = root.parts[-3:]
+        if before != after and enabled() and store_root() / "git" in root.parents:
+            record_write("git", f"{host}/{owner}/{repo}")
         mirror_repo(host, owner, repo)
-    if updated:
-        invalidate_usage()
     result(f"Repos: {updated} updated, {unchanged} unchanged, {failed} failed")
 
 
 # ---------------------------------------------------------------------------
 # usage: how much the store holds, for the dashboard
 # ---------------------------------------------------------------------------
-# Walking a store of many clones takes a while, so the dashboard never waits
-# for it: usage() returns the last result and recounts in the background.
-# This service is the store's only writer, so it counts once at startup and
-# then only after it wrote to the store (invalidate_usage() after a
-# download, clone, repo update or offload) - but not more often than
-# USAGE_MIN_INTERVAL, which a crawl would otherwise keep doing back to back.
-USAGE_MIN_INTERVAL = 60
-_usage_lock = threading.Lock()
-_usage = {"result": None, "computed_at": 0.0, "stale": True, "running": False}
-
-
-def invalidate_usage():
-    _usage["stale"] = True
+# Walking a store of hundreds of clones on a NAS array takes minutes, so the
+# sizes live in the database (blob_usage), one row per "unit": the folder a
+# save writes into as a whole - a repo (git/host/owner/repo), a YouTube
+# channel (youtube/<channel>, holding its videos' folders), a conference
+# (video/media.ccc.de/<conference>). This service is the store's only
+# writer, so the store is walked in full once, and after that each write
+# recounts just its unit (record_write). A full recount runs again after an
+# offload, or from the dashboard's Recount button (for changes made outside
+# the service, such as `python -m saver offload` run elsewhere).
+UNIT_DEPTH = {"git": 3, "youtube": 1, "video": 2, "other": 1}
+_count_lock = threading.Lock()
+_counting = False
+_count_error = None
 
 
 def _tree_size(root: Path, count=None) -> tuple:
@@ -361,52 +361,118 @@ def _tree_size(root: Path, count=None) -> tuple:
     return total, matched
 
 
-def compute_usage() -> dict:
-    """Bytes per category, with the number of videos or repositories."""
-    root = store_root()
-    categories = {}
-    for category in CATEGORIES:
-        base = root / category
-        if category == "git":
-            size, _ = _tree_size(base)
-            items = sum(1 for _ in _repo_roots(base))
-        else:
-            size, items = _tree_size(base, lambda name: Path(name).suffix.lower() in VIDEO_EXTS)
-        categories[category] = {"bytes": size, "items": items}
-    other = 0
-    if root.is_dir():
-        for entry in os.scandir(root):
-            if entry.name in CATEGORIES:
-                continue
-            if entry.is_dir(follow_symlinks=False):
-                other += _tree_size(Path(entry.path))[0]
-            elif entry.is_file(follow_symlinks=False):
-                other += entry.stat(follow_symlinks=False).st_size
-    return {"bytes": sum(c["bytes"] for c in categories.values()) + other,
-            "categories": categories, "other_bytes": other, "computed_at": time.time()}
+def _is_video_name(name: str) -> bool:
+    return Path(name).suffix.lower() in VIDEO_EXTS
 
 
-def _recount():
+def unit_of(category: str, rel: str) -> str:
+    """The unit a path (relative to the category folder) belongs to."""
+    return "/".join(Path(rel).parts[:UNIT_DEPTH[category]])
+
+
+def _unit_path(category: str, unit: str) -> Path:
+    return store_root() / unit if category == "other" else store_root() / category / unit
+
+
+def _measure(category: str, path: Path) -> tuple:
+    """(bytes, items) of one unit; bytes is None when it no longer exists."""
+    if path.is_symlink():
+        return 0, 0
+    if path.is_file():
+        return path.stat().st_size, int(category in ("youtube", "video") and _is_video_name(path.name))
+    if not path.is_dir():
+        return None, 0
+    size, videos = _tree_size(path, _is_video_name)
+    if category == "git":
+        return size, int((path / ".git" / "HEAD").exists())
+    return size, videos if category in ("youtube", "video") else 0
+
+
+def _units(base: Path, depth: int, skip=(), prefix=()):
+    """(unit, path) for everything under base, `depth` levels down; a file
+    above that depth is a unit of its own."""
     try:
-        result_ = compute_usage()
+        entries = sorted(os.scandir(base), key=lambda e: e.name)
+    except OSError:
+        return
+    for entry in entries:
+        if (not prefix and entry.name in skip) or entry.is_symlink():
+            continue
+        rel = prefix + (entry.name,)
+        if entry.is_dir(follow_symlinks=False) and len(rel) < depth:
+            yield from _units(Path(entry.path), depth, skip, rel)
+        else:
+            yield "/".join(rel), Path(entry.path)
+
+
+def _full_count():
+    global _counting, _count_error
+    from .db import get_db
+    db = get_db()
+    started = time.time()
+    try:
+        for category in (*CATEGORIES, "other"):
+            base, skip = (store_root(), CATEGORIES) if category == "other" else (store_root() / category, ())
+            for unit, path in _units(base, UNIT_DEPTH[category], skip):
+                size, items = _measure(category, path)
+                db.set_blob_unit(category, unit, size, items, time.time())
+        # units it didn't find are gone; ones a save recounted meanwhile are newer
+        db.drop_blob_units_before(started)
+        db.set_meta("blob_usage_counted_at", str(time.time()))
+        _count_error = None
     except Exception as e:  # noqa: BLE001 - a stats walk must never take anything down
-        result_ = {"error": str(e), "computed_at": time.time()}
-    with _usage_lock:
-        _usage.update(result=result_, computed_at=time.monotonic(), running=False)
+        _count_error = str(e)
+    finally:
+        with _count_lock:
+            _counting = False
+
+
+def recount() -> bool:
+    """Walk the whole store in the background. False if a count is running."""
+    global _counting
+    if not enabled():
+        return False
+    with _count_lock:
+        if _counting:
+            return False
+        _counting = True
+    threading.Thread(target=_full_count, name="blob-usage", daemon=True).start()
+    return True
+
+
+def record_write(category: str, rel: str):
+    """Recount the unit that a write to <store>/<category>/<rel> touched.
+    Never fails the save that called it."""
+    if not enabled():
+        return
+    try:
+        from .db import get_db
+        unit = unit_of(category, rel)
+        size, items = _measure(category, _unit_path(category, unit))
+        get_db().set_blob_unit(category, unit, size, items, time.time())
+    except Exception as e:  # noqa: BLE001
+        log(f"WARNING: could not update the blob store's size for {category}/{rel}: {e}")
 
 
 def usage() -> dict:
-    """The store's size as last counted; starts a recount when due. None
-    until the first count finishes (with "counting" in the status)."""
+    """The store's size per category, from the database. Starts the first
+    full count when there has never been one; until it finishes, only
+    "counting" is returned (partial sums would mislead)."""
     if not enabled():
         return None
-    with _usage_lock:
-        age = time.monotonic() - _usage["computed_at"]
-        due = _usage["result"] is None or (_usage["stale"] and age > USAGE_MIN_INTERVAL)
-        if due and not _usage["running"]:
-            _usage.update(running=True, stale=False)
-            threading.Thread(target=_recount, name="blob-usage", daemon=True).start()
-        return {"counting": _usage["running"], **(_usage["result"] or {})}
+    from .db import get_db
+    db = get_db()
+    counted_at = db.get_meta("blob_usage_counted_at")
+    if counted_at is None and not _counting and _count_error is None:
+        recount()
+    status = {"counting": _counting}
+    if counted_at is None:
+        return {**status, "error": _count_error} if _count_error else status
+    totals = db.blob_usage_totals()
+    categories = {c: totals.get(c, {"bytes": 0, "items": 0}) for c in CATEGORIES}
+    other = totals.get("other", {}).get("bytes", 0)
+    return {**status, "counted_at": float(counted_at), "other_bytes": other,
+            "bytes": sum(c["bytes"] for c in categories.values()) + other, "categories": categories}
 
 
 # ---------------------------------------------------------------------------
@@ -814,7 +880,7 @@ def offload(apply: bool = False, categories=CATEGORIES):
                     path.unlink()
         _remove_empty_dirs(cat_dir)
         summary.append(f"{len(moved)} {cat} files moved")
-    invalidate_usage()
+    recount()  # an offload moves many units at once
     result(f"Offloaded {human(freed)} from the vault ({'; '.join(summary) or 'nothing to move'})"
            + (f", {conflicts} conflict(s) left in place" if conflicts else ""))
     return plans

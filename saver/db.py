@@ -64,6 +64,18 @@ CREATE TABLE IF NOT EXISTS job_logs (
     line   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS job_logs_job ON job_logs(job_id, id);
+
+-- Size of the blob store, one row per folder that a save writes into as a
+-- whole (a repo, a YouTube channel, a conference), so a write recounts only
+-- its own folder. See blobs.usage().
+CREATE TABLE IF NOT EXISTS blob_usage (
+    category   TEXT NOT NULL,     -- git | youtube | video | other
+    unit       TEXT NOT NULL,     -- folder (or file) relative to the category
+    bytes      INTEGER NOT NULL,
+    items      INTEGER NOT NULL,  -- repos, or video files
+    counted_at REAL NOT NULL,     -- epoch seconds
+    PRIMARY KEY (category, unit)
+);
 """
 
 FINISHED_STATUSES = ("done", "skipped", "failed", "cancelled")
@@ -165,6 +177,29 @@ class Database:
         with self.tx() as c:
             c.execute("INSERT INTO meta (key, value) VALUES (?, ?) "
                       "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, value))
+
+    # ------------------------------------------------------------------
+    # blob store usage
+    # ------------------------------------------------------------------
+    def set_blob_unit(self, category, unit, bytes_, items, counted_at):
+        """Store one folder's size; a folder that's gone (bytes None) is dropped."""
+        with self.tx() as c:
+            if bytes_ is None:
+                c.execute("DELETE FROM blob_usage WHERE category = ? AND unit = ?", (category, unit))
+            else:
+                c.execute("INSERT INTO blob_usage (category, unit, bytes, items, counted_at) VALUES (?, ?, ?, ?, ?) "
+                          "ON CONFLICT(category, unit) DO UPDATE SET bytes = excluded.bytes, "
+                          "items = excluded.items, counted_at = excluded.counted_at",
+                          (category, unit, bytes_, items, counted_at))
+
+    def drop_blob_units_before(self, counted_at) -> int:
+        """After a full count: drop folders it didn't find (counted before it began)."""
+        with self.tx() as c:
+            return c.execute("DELETE FROM blob_usage WHERE counted_at < ?", (counted_at,)).rowcount
+
+    def blob_usage_totals(self) -> dict:
+        return {r["category"]: {"bytes": r["bytes"], "items": r["items"]} for r in self._rows(
+            "SELECT category, SUM(bytes) AS bytes, SUM(items) AS items FROM blob_usage GROUP BY category")}
 
     # ------------------------------------------------------------------
     # entries (dedupe registry)

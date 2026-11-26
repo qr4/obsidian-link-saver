@@ -334,6 +334,13 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
             return {"status": "already_queued", "job_id": active["id"]}
         return {"status": "queued", "job_id": manager.enqueue(type_, label, options)}
 
+    @app.post("/api/storage/recount", dependencies=auth)
+    def recount_storage():
+        """Walk the whole blob store again (after changes made outside the service)."""
+        if not blobs.enabled():
+            raise HTTPException(status_code=409, detail="blob store not configured (BLOB_DIR + PUBLIC_URL)")
+        return {"started": blobs.recount(), "counting": True}
+
     @app.post("/api/storage/update-repos", dependencies=auth)
     def start_update_repos():
         return _maintenance_job("update_repos", "Pull all stored repositories", {})

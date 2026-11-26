@@ -94,7 +94,7 @@ def clone_repo(host: str, owner: str, repo: str, clone_url: str):
         shutil.rmtree(dest, ignore_errors=True)
         return
     from . import blobs
-    blobs.invalidate_usage()  # a new clone in the store (no-op cost without one)
+    blobs.record_write("git", blobs.repo_rel(host, owner, repo))  # no-op without a store
 
 
 README_NAMES = ("README.md", "Readme.md", "readme.md", "README.MD", "README.rst",

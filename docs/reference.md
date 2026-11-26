@@ -280,7 +280,8 @@ curl -F files=@paper.pdf -F source=https://example.org/paper.pdf $URL/api/upload
 | `POST` | `/api/registry/patch` | `[{"key", "set": {…}, "unset": […]}]`, used by `fix_registry.py` |
 | `POST` | `/api/registry/import?overwrite=` | Merge a registry export |
 | `POST`/`DELETE` | `/api/vault-lock`, `/api/vault-lock/{lease}` | Lease that pauses Area-note writes (vault-maintenance) |
-| `GET` | `/api/storage` | Blob store status (path, free space, public URL, and `usage`: bytes per category with the number of videos and repos, counted in the background at startup and again after the service writes to the store) |
+| `GET` | `/api/storage` | Blob store status (path, free space, public URL, and `usage`: bytes per category with the number of videos and repos, kept in the database: the store is walked once, then each save recounts only the folder it wrote to) |
+| `POST` | `/api/storage/recount` | Walk the whole blob store again in the background, after changes made outside the service (e.g. an offload run from the command line) |
 | `POST` | `/api/storage/update-repos` | Queue `git pull` for every stored clone |
 | `POST` | `/api/waypoints/refresh` | Regenerate stale Waypoint indexes now |
 | `GET` | `/blobs/…`, `/watch/…`, `/subs/…` | Stored files and listings, video player, subtitles as WebVTT (no token) |
