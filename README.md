@@ -77,8 +77,8 @@ The vault layout it uses (created when missing):
 
 ## Screenshots
 
-All taken on a fresh [quick start](#quick-start-on-your-own-machine) after
-saving four links.
+All taken on a [quick start](#quick-start-on-your-own-machine) with four
+saved links.
 
 | | |
 |---|---|
@@ -86,6 +86,8 @@ saving four links.
 | **Library:** everything saved, searchable, with links to the note and the stored files | **Job log:** each stage of a save; videos are filed by their transcript |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/repo-browser-dark.png"><img alt="The blob store's file browser showing a cloned repository and its README" src="docs/screenshots/repo-browser.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/watch-dark.jpg"><img alt="The video player with Whisper subtitles" src="docs/screenshots/watch.jpg"></picture> |
 | **Stored repositories:** the full clone lives outside the vault, browsable | **Video player:** stored videos play in the browser with Whisper subtitles |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png"><img alt="The Settings tab: LLM provider, model and API key, Whisper model and device, and the YouTube cookies" src="docs/screenshots/settings.png"></picture> | |
+| **Settings:** switch the LLM backend and model, pick the Whisper model, upload YouTube cookies | |
 
 ## Quick start (on your own machine)
 
