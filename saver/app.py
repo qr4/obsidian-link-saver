@@ -411,7 +411,9 @@ def create_app(run_lifecycle: bool = True) -> FastAPI:
         try:
             return {"models": llm.list_models(cfg), "base_url": cfg.llm_base_url}
         except (llm.LLMError, requests.RequestException, ValueError) as e:
-            raise HTTPException(status_code=502, detail=f"Could not list the models: {_llm_failure(cfg, e)}.")
+            failure = _llm_failure(cfg, e)
+            raise HTTPException(status_code=502, detail=f"Could not list the models: {failure}"
+                                + ("" if failure.endswith((".", "?", "!")) else "."))
 
     @app.post("/api/settings/llm/test", dependencies=auth)
     def llm_test(body: SettingsTry):

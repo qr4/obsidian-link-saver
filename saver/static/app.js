@@ -174,16 +174,31 @@ function renderStatus(state) {
   const info = [
     ["Vault", state.config.vault],
     ["LLM", `${state.config.llm_model} (${PROVIDER_LABELS[state.config.llm_provider] || state.config.llm_provider})`],
-    ["Whisper", w.enabled ? `${w.model}${w.loaded ? ` · loaded (${w.device})` : " · idle"}${w.busy ? " · busy" : ""}` : "disabled"],
+    ["Whisper", w.enabled ? `${w.model} · ${whisperState(w, true)}` : "off"],
     ["Cookies", cookieSummary(state.config.cookies)],
     ["Inbox", state.config.inbox_watch ? "watching singlefile_inbox" : "off"],
     ["Waypoints", waypointSummary(state.waypoints)],
     ["Version", state.version],
   ];
-  $("#whisper-state").textContent = !w.enabled ? "off"
-    : `${w.model}${w.loaded ? ` · loaded on ${w.device}` : " · not loaded"}${w.busy ? " · transcribing" : ""}`;
+  $("#whisper-state").textContent = whisperState(w);
   $("#service-info").replaceChildren(...info.flatMap(([k, v]) => [
     el("dt", {}, k), el("dd", { title: v, class: String(v).startsWith("⚠") ? "warn" : null }, v)]));
+}
+
+// Whisper loads its model only to transcribe and frees it after
+// unload_after idle seconds (the GPU is shared with the LLM), so "not in
+// memory" is the normal state, not a fault.
+function whisperState(w, short = false) {
+  if (!w.enabled) return "off";
+  const where = w.device === "cuda" ? "GPU" : (w.device || "").toUpperCase();
+  if (w.busy) return w.loaded ? `transcribing on the ${where}` : "loading the model to transcribe";
+  if (!w.loaded) return short ? "loads on demand" : `${w.model} · loads when a video is transcribed`;
+  const other = w.loaded_model && w.loaded_model !== w.model;
+  const freed = w.unload_after > 0 ? `, freed after ${Math.round(w.unload_after / 60) || 1} min idle` : "";
+  if (short) return `in memory (${where})${other ? `: ${w.loaded_model}` : ""}`;
+  return other
+    ? `${w.loaded_model} in memory (${where}); ${w.model} loads with the next video`
+    : `${w.model} · in memory on the ${where}${freed}`;
 }
 
 /* --------------------------------------------------------------- storage */
@@ -287,14 +302,16 @@ function renderCookies(c) {
   box.replaceChildren(...lines);
 }
 
-// A message under a form that hides itself again after a while.
-function flash(selector, text, isError = false) {
+// A message under a form, scrolled into view (it can sit below the fold
+// under a long form). It hides itself again after a while, unless sticky.
+function flash(selector, text, isError = false, sticky = false) {
   const msg = $(selector);
   msg.textContent = text;
   msg.classList.toggle("error", isError);
   msg.hidden = false;
+  msg.scrollIntoView({ block: "nearest", behavior: "smooth" });
   clearTimeout(msg.timer);
-  msg.timer = setTimeout(() => { msg.hidden = true; }, isError ? 15000 : 6000);
+  if (!sticky) msg.timer = setTimeout(() => { msg.hidden = true; }, isError ? 15000 : 6000);
 }
 
 const cookieMessage = (text, isError = false) => flash("#cookie-message", text, isError);
@@ -508,18 +525,22 @@ async function loadModels() {
   }
 }
 
+// The result stays until the next action: a quick answer would otherwise
+// come and go before anyone looks for it.
 async function testLLM() {
   const button = $("#llm-test");
   button.disabled = true;
-  flash("#llm-message", "Sending a test prompt…");
+  button.textContent = "Testing…";
+  flash("#llm-message", "Sending a test prompt (a model that isn't loaded yet can take a minute)…", false, true);
   try {
     const r = await api("/api/settings/llm/test", { method: "POST", json: { values: collectSettings($("#llm-form")) } });
-    const text = `${r.model} answered in ${r.seconds} s: ${r.reply || "(empty)"}`;
-    flash("#llm-message", r.json ? text : `${text}\nThat isn't JSON: the prompts need a model that follows instructions closely.`, !r.json);
+    const text = `\u2713 ${r.model} answered in ${r.seconds} s: ${r.reply || "(empty)"}`;
+    flash("#llm-message", r.json ? text : `${text}\nThat isn't JSON: the prompts need a model that follows instructions closely.`, !r.json, true);
   } catch (err) {
-    flash("#llm-message", `Test failed: ${errorDetail(err)}`, true);
+    flash("#llm-message", `Test failed: ${errorDetail(err)}`, true, true);
   } finally {
     button.disabled = false;
+    button.textContent = "Test";
   }
 }
 

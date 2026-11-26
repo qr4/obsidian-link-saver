@@ -164,7 +164,10 @@ def status() -> dict:
         "enabled": settings.whisper_enabled,
         "model": settings.whisper_model,
         "loaded": _model is not None,
+        # can differ from "model" right after the Settings tab changed it
+        "loaded_model": _model_key[0] if _model_key else None,
         "device": _model_key[1] if _model_key else None,
+        "unload_after": settings.whisper_unload_after,
         "busy": _gpu._value == 0,  # noqa: SLF001 - Semaphore has no public "locked" for this
     }
 
