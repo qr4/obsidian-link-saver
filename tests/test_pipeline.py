@@ -250,6 +250,8 @@ def test_captures_drop_cookie_banners(monkeypatch, tmp_path):
     sheets = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "--browser-stylesheet"]
     # the banner rules first, then the scroll fix that overrides them
     assert sheets[0] == str(cookie_css) and "overflow-y: auto" in open(sheets[1]).read()
+    script = cmd[cmd.index("--browser-script") + 1]
+    assert "MutationObserver" in open(script).read()
 
     # outside the image the rules are missing: captures still work without them
     monkeypatch.setattr(settings, "singlefile_cookie_css", str(tmp_path / "missing.css"))
@@ -258,4 +260,4 @@ def test_captures_drop_cookie_banners(monkeypatch, tmp_path):
 
     monkeypatch.setattr(settings, "singlefile_removed_elements", "none")
     fetch.save_single_file("https://example.com", tmp_path, "p.html")
-    assert "--removed-elements-selector" not in calls[-1] and "--browser-stylesheet" not in calls[-1]
+    assert not {"--removed-elements-selector", "--browser-stylesheet", "--browser-script"} & set(calls[-1])

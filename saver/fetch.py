@@ -119,6 +119,9 @@ def pdf_import_source_url(data: bytes, path: Path) -> str:
 
 # Undoes the scroll locks of consent tools the cookie rules don't know.
 CAPTURE_STYLESHEET = Path(__file__).parent / "static" / "capture.css"
+# Removes custom-built consent banners (any fixed box about cookies that
+# offers a choice) while the page loads.
+CAPTURE_SCRIPT = Path(__file__).parent / "static" / "capture.js"
 
 
 def save_single_file(url: str, dest_dir: Path, filename: str) -> Path:
@@ -145,7 +148,9 @@ def save_single_file(url: str, dest_dir: Path, filename: str) -> Path:
         cookie_css = settings.singlefile_cookie_css
         if cookie_css and Path(cookie_css).is_file():
             cmd += ["--browser-stylesheet", cookie_css]
-        cmd += ["--browser-stylesheet", str(CAPTURE_STYLESHEET)]
+        cmd += ["--browser-stylesheet", str(CAPTURE_STYLESHEET),
+                # Sites that build their own banner: no list knows those.
+                "--browser-script", str(CAPTURE_SCRIPT)]
     try:
         result = proc.run(cmd, timeout=settings.singlefile_timeout)
     except FileNotFoundError:
