@@ -45,6 +45,8 @@ def test_kind_for_note():
     assert kind_for_note("Dumps/git/github.com/a/b") == "git"
     assert kind_for_note("Dumps/youtube/Chan/Vid [x]") == "youtube"
     assert kind_for_note("Areas/hobbies/x.md") == "page"
+    assert kind_for_note("Dumps/pdf/Paper.pdf") == "pdf"
+    assert kind_for_note("Dumps/single_page/theoremoftheday.org/Sperner's Lemma.pdf") == "pdf"
     assert kind_for_note(None) == "other"
 
 

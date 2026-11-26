@@ -95,6 +95,9 @@ def now_iso() -> str:
 
 def kind_for_note(note) -> str:
     note = note or ""
+    # A crawl can keep PDFs in its own folder (Dumps/single_page/<site>/x.pdf).
+    if note.lower().endswith(".pdf"):
+        return "pdf"
     for prefix, kind in (("Dumps/git", "git"), ("Dumps/pdf", "pdf"), ("Dumps/youtube", "youtube"),
                          ("Dumps/video", "video"), ("Areas", "page")):
         if note.startswith(prefix):
