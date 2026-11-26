@@ -241,11 +241,20 @@ def test_captures_drop_cookie_banners(monkeypatch, tmp_path):
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(fetch.proc, "run", fake_run)
+    cookie_css = tmp_path / "common.css"
+    cookie_css.write_text("#banner { display: none !important }")
+    monkeypatch.setattr(settings, "singlefile_cookie_css", str(cookie_css))
     fetch.save_single_file("https://example.com", tmp_path, "p.html")
     cmd = calls[-1]
     assert "#onetrust-consent-sdk" in cmd[cmd.index("--removed-elements-selector") + 1]
-    stylesheet = cmd[cmd.index("--browser-stylesheet") + 1]
-    assert "overflow: auto" in open(stylesheet).read()
+    sheets = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "--browser-stylesheet"]
+    # the banner rules first, then the scroll fix that overrides them
+    assert sheets[0] == str(cookie_css) and "overflow-y: auto" in open(sheets[1]).read()
+
+    # outside the image the rules are missing: captures still work without them
+    monkeypatch.setattr(settings, "singlefile_cookie_css", str(tmp_path / "missing.css"))
+    fetch.save_single_file("https://example.com", tmp_path, "p.html")
+    assert calls[-1].count("--browser-stylesheet") == 1
 
     monkeypatch.setattr(settings, "singlefile_removed_elements", "none")
     fetch.save_single_file("https://example.com", tmp_path, "p.html")

@@ -117,7 +117,7 @@ def pdf_import_source_url(data: bytes, path: Path) -> str:
     return f"local://pdf-import/{digest}/{slug}.pdf"
 
 
-# Undoes the scroll lock a removed consent banner leaves behind.
+# Undoes the scroll locks of consent tools the cookie rules don't know.
 CAPTURE_STYLESHEET = Path(__file__).parent / "static" / "capture.css"
 
 
@@ -139,8 +139,13 @@ def save_single_file(url: str, dest_dir: Path, filename: str) -> Path:
     ]
     removed = settings.singlefile_removed_elements.strip()
     if removed and removed.lower() != "none":
-        cmd += ["--removed-elements-selector", removed,
-                "--browser-stylesheet", str(CAPTURE_STYLESHEET)]
+        cmd += ["--removed-elements-selector", removed]
+        # Banners the rules hide are dropped too (--remove-hidden-elements
+        # is on by default), and only the rules a page uses are saved.
+        cookie_css = settings.singlefile_cookie_css
+        if cookie_css and Path(cookie_css).is_file():
+            cmd += ["--browser-stylesheet", cookie_css]
+        cmd += ["--browser-stylesheet", str(CAPTURE_STYLESHEET)]
     try:
         result = proc.run(cmd, timeout=settings.singlefile_timeout)
     except FileNotFoundError:

@@ -122,9 +122,12 @@ class Settings:
     singlefile_bin: str = field(default_factory=lambda: _env("SINGLEFILE_BIN", "single-file"))
     chromium_bin: str = field(default_factory=lambda: _env("CHROMIUM_BIN", "/usr/bin/chromium"))
     singlefile_timeout: int = field(default_factory=lambda: _int("SINGLEFILE_TIMEOUT", 180))
-    # Removed from every capture: the bundled Chromium has no cookie-banner
-    # blocker, so the consent dialog would otherwise be saved over the page.
-    # "none" turns it off.
+    # The bundled Chromium has no cookie-banner blocker, so the consent
+    # dialog would otherwise be saved over the page. Captures get the banner
+    # rules of the "I still don't care about cookies" extension (the image
+    # downloads them; empty or missing skips them) and have these elements
+    # removed. SINGLEFILE_REMOVED_ELEMENTS=none turns all of it off.
+    singlefile_cookie_css: str = field(default_factory=lambda: _env("SINGLEFILE_COOKIE_CSS", ""))
     singlefile_removed_elements: str = field(default_factory=lambda: _env(
         "SINGLEFILE_REMOVED_ELEMENTS", DEFAULT_REMOVED_ELEMENTS))
 

@@ -1,7 +1,21 @@
-/* Inserted into every page the server captures (--browser-stylesheet), and so
-   saved with it. Consent tools lock scrolling while their banner is open
-   (overflow: hidden on html/body); the banner itself is removed from the
-   capture (SINGLEFILE_REMOVED_ELEMENTS), and this undoes the lock it leaves. */
-html, body {
-  overflow: auto !important;
+/* Inserted into every page the server captures (--browser-stylesheet), after
+   the cookie-banner rules, and so saved with it. Consent tools lock scrolling
+   while their banner is open, and their CSS often wins on specificity
+   (html.sp-message-open body { overflow: hidden !important }): :root:root
+   outranks those. Body position is only reset where a script pinned it
+   inline (the usual scroll-lock trick: position: fixed; top: -Npx). */
+:root:root:root {
+  overflow-y: auto !important;
+}
+
+/* Visible lets the page scroll the viewport; next to a site's own
+   overflow-x: hidden it computes to auto, which scrolls as well. */
+:root:root:root > body {
+  overflow-y: visible !important;
+}
+
+:root:root:root > body[style*="position: fixed"],
+:root:root:root > body[style*="position:fixed"] {
+  position: static !important;
+  top: auto !important;
 }
