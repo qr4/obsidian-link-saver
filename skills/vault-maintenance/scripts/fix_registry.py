@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from vault import AREAS, SERVICE_URL, file_lock, load_registry, save_registry
+from vault import AREAS, SERVICE_URL, file_lock, load_registry, rehome, save_registry
 
 APPLY = "--apply" in sys.argv
 
@@ -38,7 +38,7 @@ for key, rec in reg.items():
     if len(hits) == 1:
         new = hits[0]
         if new != old:
-            rec["area_note"], rec["note"] = new, f"Areas/{new}"
+            rehome(rec, new)
             fixed += 1
             report.append(f"  {old} -> {new}")
         else:
@@ -60,7 +60,7 @@ for key, rec in reg.items():
             break
     if found:
         new, bullet = found
-        rec["area_note"], rec["note"] = new, f"Areas/{new}"
+        rehome(rec, new)
         rec["area_entry"] = bullet if bullet.endswith("\n") else bullet + "\n"
         fixed += 1
         report.append(f"  {old} -> {new}  (entry text refreshed)")
@@ -72,7 +72,7 @@ for key, rec in reg.items():
         if old and not (AREAS / old).exists():
             new = DROPPED_INTO.get(old)
             if new:
-                rec["area_note"], rec["note"] = new, f"Areas/{new}"
+                rehome(rec, new)
             else:
                 rec.pop("area_note", None)
         unresolved += 1

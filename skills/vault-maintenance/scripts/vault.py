@@ -152,6 +152,18 @@ def load_registry():
 REGISTRY_FIELDS = ("url", "note", "filename", "area_note", "area_entry")
 
 
+def rehome(record, area_note):
+    """Point a registry record at a new Areas note. `note` follows only when
+    it *is* the Areas note (web pages): for a repo, PDF or video it is the
+    dump (Dumps/git/..., Dumps/youtube/...), which a note move doesn't touch
+    and which decides the entry's type - overwriting it once turned 18
+    videos into "pages"."""
+    note = record.get("note")
+    record["area_note"] = area_note
+    if not note or note.startswith("Areas/"):
+        record["note"] = f"Areas/{area_note}"
+
+
 def save_registry(new, old):
     """Persist registry edits: only the changed fields of changed records
     are sent to the service."""

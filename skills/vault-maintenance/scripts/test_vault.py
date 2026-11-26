@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from vault import (WIKILINK_RE, Vault, extract_urls, is_content,
-                   is_folder_note, norm_url, split_entries)
+                   is_folder_note, norm_url, rehome, split_entries)
 
 failures = []
 
@@ -156,6 +156,17 @@ with _tempfile.TemporaryDirectory() as _tmp:
     check("changed note has the new text", _note.read_text(encoding="utf-8"), "- b\n")
     check("no temp file left behind", sorted(p.name for p in Path(_tmp).iterdir()), ["note.md"])
     check("a new note is created", write_if_changed(Path(_tmp) / "new.md", "- c\n"), True)
+
+# ── rehome: a moved Areas note must not clobber a dump note ──────────────
+# fix_registry set note = "Areas/<new>" on every record it re-pointed, so 18
+# YouTube/talk records lost their Dumps/youtube/... note and became "pages".
+_page = {"note": "Areas/a/old.md", "area_note": "a/old.md"}
+rehome(_page, "b/new.md")
+check("page note follows the move", _page, {"note": "Areas/b/new.md", "area_note": "b/new.md"})
+_video = {"note": "Dumps/youtube/Chan/Talk [abcdefghijk]", "area_note": "a/old.md"}
+rehome(_video, "b/new.md")
+check("video note stays on its dump", _video,
+      {"note": "Dumps/youtube/Chan/Talk [abcdefghijk]", "area_note": "b/new.md"})
 
 if failures:
     print(f"FAILED {len(failures)}:")
