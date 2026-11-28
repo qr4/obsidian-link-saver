@@ -97,6 +97,49 @@ def test_content_free_page_is_rejected_cleanly(env, capture):
     assert Saver().save("https://blog.example.com/tag/python", allow_thin=True) == "consumed"
 
 
+def test_keep_anyway_reaches_a_git_repo(env, capture, monkeypatch):
+    """'Keep anyway' on a repo whose page the LLM judged content-free must
+    actually keep it: allow_thin has to reach the git handler too."""
+    monkeypatch.setattr(saver_mod.gitrepos, "clone_repo", lambda *a, **k: None)
+    monkeypatch.setattr(saver_mod.blobs, "mirror_repo", lambda *a: env["vault"] / "nowhere")
+    monkeypatch.setattr(saver_mod.gitrepos, "find_readme", lambda path: None)
+    env["llm"]["has_content"] = False
+    url = "https://github.com/someone/tiny-tool"
+    with pytest.raises(ContentFreeError):
+        Saver().save(url)
+    assert Saver().save(url, allow_thin=True) == "dispatched_other"
+    assert env["db"].get_entry("url:github.com/someone/tiny-tool")["status"] == "done"
+
+
+def test_forge_behind_a_bot_wall_is_saved_as_a_repo(env, capture, monkeypatch):
+    """A self-hosted forge whose HTML is a bot-wall challenge is still
+    recognized through git's own handshake, a deep link included, and is
+    tagged from the cloned README rather than the challenge page."""
+    probed, analyzed = [], []
+    monkeypatch.setattr(saver_mod.gitrepos, "probe_smart_http",
+                        lambda host, owner, repo: probed.append((host, owner, repo)) or True)
+    readme_dir = env["vault"] / "clone"
+    readme_dir.mkdir()
+    (readme_dir / "README.md").write_text("Punktfunk streams games over the network.", encoding="utf-8")
+    monkeypatch.setattr(saver_mod.gitrepos, "clone_repo", lambda *a, **k: None)
+    monkeypatch.setattr(saver_mod.blobs, "mirror_repo", lambda *a: readme_dir)
+    monkeypatch.setattr(saver_mod, "fetch_page_html", lambda url: "<title>Making sure you're not a bot!</title>")
+    monkeypatch.setattr(Saver, "analyze", lambda self, text, **kw: analyzed.append(text) or
+                        (["streaming"], "Game streaming.", "programming/web-scraping.md"))
+
+    assert Saver().save("https://git.example.org/unom/punktfunk/src/branch/main") == "dispatched_other"
+    assert probed == [("git.example.org", "unom", "punktfunk")]
+    assert "Punktfunk streams games" in analyzed[0]
+    entry = env["db"].get_entry("url:git.example.org/unom/punktfunk/src/branch/main")
+    assert entry["note"] == "Dumps/git/git.example.org/unom/punktfunk"
+
+
+def test_probe_needs_an_owner_and_repo(monkeypatch):
+    monkeypatch.setattr(saver_mod.gitrepos, "probe_smart_http", lambda *a: True)
+    assert Saver.probe_git_repo("https://git.example.org/unom") == (None, None, None)
+    assert Saver.probe_git_repo("https://git.example.org/unom/tool.git") == ("git.example.org", "unom", "tool")
+
+
 def test_unsafe_area_falls_back_to_uncategorized(env, capture):
     env["llm"]["area"] = "../../etc/passwd.md"
     Saver().save("https://blog.example.com/a")

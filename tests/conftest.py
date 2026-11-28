@@ -10,6 +10,14 @@ from saver import llm  # noqa: E402
 from saver.config import settings  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def no_git_probe(monkeypatch):
+    """The git smart-HTTP probe runs for every generic page; tests that
+    want a forge stub it themselves."""
+    from saver import gitrepos
+    monkeypatch.setattr(gitrepos, "probe_smart_http", lambda *a: False)
+
+
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     """A throwaway vault + config dir with a fresh database, and an LLM stub

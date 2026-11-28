@@ -40,6 +40,31 @@ def fetch_github_repos(owner: str):
     raise RuntimeError(f"no GitHub user or org named {owner!r}")
 
 
+def probe_smart_http(host: str, owner: str, repo: str) -> bool:
+    """True when https://host/owner/repo answers git's own smart-HTTP
+    handshake - what `git clone` asks first. Every common forge (Gitea,
+    Forgejo, GitLab, Gogs, cgit, OneDev...) serves it, it doesn't need the
+    LLM, and it gets past the bot walls (Anubis & co.) that hide a forge's
+    HTML from scripts: they must let git clients through. A non-forge site
+    answers 404 or HTML, never the git content type."""
+    try:
+        response = requests.get(f"https://{host}/{owner}/{repo}.git/info/refs",
+                                params={"service": "git-upload-pack"}, timeout=8, stream=True,
+                                headers={"User-Agent": "git/2 (obsidian-save-service)"})
+    except requests.RequestException:
+        return False
+    with response:
+        return (response.status_code == 200 and response.headers.get("content-type", "")
+                .startswith("application/x-git-upload-pack-advertisement"))
+
+
+def read_text(path, limit: int = 20000) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[:limit]
+    except OSError:
+        return ""
+
+
 def repo_dest_dir(host: str, owner: str, repo: str) -> Path:
     """<root>/<host>/<owner>/<repo>, uniform across every git host so an
     owner/repo pair can never collide across hosts. The root is the blob

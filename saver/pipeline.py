@@ -227,7 +227,7 @@ class Saver:
     # git
     # ------------------------------------------------------------------
     def save_git_repo(self, url, host=None, owner=None, repo=None,
-                      existing_area_note=None, existing_area_entry=None):
+                      existing_area_note=None, existing_area_entry=None, allow_thin=False):
         """host/owner/repo can be pre-supplied by detect_git_repo, which has
         already verified a host outside the GIT_HOSTS allowlist - re-deriving
         them here would reject that host."""
@@ -242,16 +242,18 @@ class Saver:
         stage("Reading repo page")
         try:
             html = fetch_page_html(browse_url)
-            text = BeautifulSoup(html, "html.parser").get_text(separator="\n", strip=True)
+            page_text = BeautifulSoup(html, "html.parser").get_text(separator="\n", strip=True)
         except Exception as e:  # noqa: BLE001
-            log(f"WARNING: could not fetch page text for tagging ({e}), tagging from the URL alone")
-            text = url
-
-        tags, summary, topic_area = self.analyze(text)
+            log(f"WARNING: could not fetch the repo page ({e}), tagging from the README alone")
+            page_text = ""
         log("GIT REPO:", repo_label)
 
-        # No synthetic companion note - link straight to the clone's README.
-        readme_link = browse = None
+        # Cloned before tagging: the README is the best account of a repo,
+        # and often the only one - a forge behind a bot wall (Anubis) shows
+        # scripts a challenge page instead of the repo, and a repo page whose
+        # README is empty is just a file list. A clone a rejection leaves
+        # behind is reused by 'Keep anyway'.
+        readme_link = browse = readme = None
         if repo:
             stage("Cloning")
             clone_url = url if url.endswith(".git") else f"https://{host}/{owner}/{repo}.git"
@@ -263,6 +265,13 @@ class Saver:
             if readme:
                 readme_link = f"Dumps/git/{blobs.repo_rel(host, owner, repo)}/{readme.name}"
             browse = blobs.browse_link(host, owner, repo)
+
+        readme_text = gitrepos.read_text(readme).strip() if readme else ""
+        text = "\n\n".join(filter(None, [
+            f"Repository: {repo_label}",
+            f"README:\n{readme_text}" if readme_text else None,
+            f"Repo page:\n{page_text}" if page_text else None]))
+        tags, summary, topic_area = self.analyze(text, allow_thin=allow_thin)
 
         # Local README and the live repo page are two different things - the
         # Area note is the only place either is recorded, so it gets both
@@ -566,10 +575,10 @@ class Saver:
         try:
             outcome = self.save(url, precaptured=(html, path), allow_thin=True)
         except ContentFreeError as e:
-            # Only reachable for the handlers allow_thin doesn't cover (git,
-            # channel), where the verdict means the README/channel text came
-            # back empty - the capture is the useless part, so drop it rather
-            # than parking it for a retry that would fail identically.
+            # Only reachable for the handlers allow_thin doesn't cover (a
+            # channel or author scan) - the capture is the useless part, so
+            # drop it rather than parking it for a retry that would fail
+            # identically.
             path.unlink(missing_ok=True)
             result(f"Dropped {path.name}: {e}")
             return "content_free"
@@ -630,6 +639,24 @@ class Saver:
     # and almost no ordinary article does. Pages without it skip the LLM.
     FORGE_MARKERS = re.compile(
         r"gitea|forgejo|gitlab|gogs|sourcehut|sr\.ht|cgit|gitweb|onedev|git clone|\.git\b", re.IGNORECASE)
+
+    @staticmethod
+    def probe_git_repo(url: str):
+        """(host, owner, repo) when the URL's first two path segments name a
+        git repo that answers git's own handshake - a self-hosted forge
+        outside GIT_HOSTS, also behind a bot wall, also deep-linked to a
+        file or branch inside the repo. One request, no LLM."""
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return None, None, None
+        host = parsed.netloc.lower().removeprefix("www.")
+        parts = [p for p in parsed.path.split("/") if p]
+        if not host or len(parts) < 2:
+            return None, None, None
+        owner, repo = parts[0], parts[1].removesuffix(".git")
+        if not gitrepos.probe_smart_http(host, owner, repo):
+            return None, None, None
+        return host, owner, repo
 
     def detect_git_repo(self, url: str, html: str):
         """Heuristic fallback for repos on forges outside GIT_HOSTS (a
@@ -729,29 +756,32 @@ class Saver:
                     allow_thin=allow_thin)
             elif parse_git_repo_url(url)[1]:
                 note_root, area, area_note, area_entry = self.save_git_repo(
-                    url, existing_area_note=prior_area_note, existing_area_entry=prior_area_entry)
+                    url, existing_area_note=prior_area_note, existing_area_entry=prior_area_entry,
+                    allow_thin=allow_thin)
             elif is_pdf_url(url):
                 note_root, area, area_note, area_entry = self.save_pdf(
                     url, existing_area_note=prior_area_note, existing_area_entry=prior_area_entry,
                     allow_thin=allow_thin, existing_filename=prior_filename)
                 filename = area
             else:
-                heuristic_html = precaptured[0] if precaptured else None
-                if heuristic_html is None:
-                    try:
-                        heuristic_html = fetch_page_html(url)
-                    except Exception:  # noqa: BLE001
-                        heuristic_html = None
-                host = owner = repo = None
-                if heuristic_html:
-                    host, owner, repo = self.detect_git_repo(url, heuristic_html)
+                host, owner, repo = self.probe_git_repo(url)
+                if not owner:
+                    heuristic_html = precaptured[0] if precaptured else None
+                    if heuristic_html is None:
+                        try:
+                            heuristic_html = fetch_page_html(url)
+                        except Exception:  # noqa: BLE001
+                            heuristic_html = None
+                    if heuristic_html:
+                        host, owner, repo = self.detect_git_repo(url, heuristic_html)
 
                 if owner and repo:
                     owner, repo = safe_segment(owner), safe_segment(repo)
                     log(f"HEURISTIC: {url} looks like a git repo ({host}/{owner}/{repo}) - saving as one")
                     note_root, area, area_note, area_entry = self.save_git_repo(
                         f"https://{host}/{owner}/{repo}", host=host, owner=owner, repo=repo,
-                        existing_area_note=prior_area_note, existing_area_entry=prior_area_entry)
+                        existing_area_note=prior_area_note, existing_area_entry=prior_area_entry,
+                        allow_thin=allow_thin)
                 else:
                     note_root, area, filename, area_note, area_entry = self.save_generic(
                         url, precaptured=precaptured, existing_filename=prior_filename,
